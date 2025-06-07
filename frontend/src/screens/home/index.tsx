@@ -1,6 +1,6 @@
 import { ColorSwatch, Group } from '@mantine/core';
 import { Button } from '@/components/ui/button';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import Draggable from 'react-draggable';
 import {SWATCHES} from '@/constants';
@@ -32,6 +32,20 @@ export default function Home() {
     //     enabled: true,
     //     initialPoint: { x: 0, y: 0 },
     // });
+    
+    const renderLatexToCanvas = useCallback((expression: string, answer: string) => {
+        const latex = `\\(\\LARGE{${expression} = ${answer}}\\)`;
+        setLatexExpression(prevExpressions => [...prevExpressions, latex]);
+
+        // Clear the main canvas
+        const canvas = canvasRef.current;
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+    }, []);
 
     useEffect(() => {
         if (latexExpression.length > 0 && window.MathJax) {
@@ -45,7 +59,7 @@ export default function Home() {
         if (result) {
             renderLatexToCanvas(result.expression, result.answer);
         }
-    }, [result]);
+    }, [result, renderLatexToCanvas]);
 
     useEffect(() => {
         if (reset) {
@@ -68,8 +82,8 @@ export default function Home() {
                 ctx.lineCap = 'round';
                 ctx.lineWidth = 3;
             }
-
         }
+        
         const script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML';
         script.async = true;
@@ -84,23 +98,7 @@ export default function Home() {
         return () => {
             document.head.removeChild(script);
         };
-
     }, []);
-
-    const renderLatexToCanvas = (expression: string, answer: string) => {
-        const latex = `\\(\\LARGE{${expression} = ${answer}}\\)`;
-        setLatexExpression([...latexExpression, latex]);
-
-        // Clear the main canvas
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-            }
-        }
-    };
-
 
     const resetCanvas = () => {
         const canvas = canvasRef.current;
@@ -124,6 +122,7 @@ export default function Home() {
             }
         }
     };
+    
     const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
         if (!isDrawing) {
             return;
@@ -138,6 +137,7 @@ export default function Home() {
             }
         }
     };
+    
     const stopDrawing = () => {
         setIsDrawing(false);
     };  
@@ -146,54 +146,60 @@ export default function Home() {
         const canvas = canvasRef.current;
     
         if (canvas) {
-            const response = await axios({
-                method: 'post',
-                url: `${import.meta.env.VITE_API_URL}/calculate`,
-                data: {
-                    image: canvas.toDataURL('image/png'),
-                    dict_of_vars: dictOfVars
-                }
-            });
+            try {
+                const response = await axios({
+                    method: 'post',
+                    url: `${import.meta.env.VITE_API_URL}/calculate`,
+                    data: {
+                        image: canvas.toDataURL('image/png'),
+                        dict_of_vars: dictOfVars
+                    }
+                });
 
-            const resp = await response.data;
-            console.log('Response', resp);
-            resp.data.forEach((data: Response) => {
-                if (data.assign === true) {
-                    // dict_of_vars[resp.result] = resp.answer;
-                    setDictOfVars({
-                        ...dictOfVars,
-                        [data.expr]: data.result
-                    });
-                }
-            });
-            const ctx = canvas.getContext('2d');
-            const imageData = ctx!.getImageData(0, 0, canvas.width, canvas.height);
-            let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+                const resp = await response.data;
+                console.log('Response', resp);
+                resp.data.forEach((data: Response) => {
+                    if (data.assign === true) {
+                        // dict_of_vars[resp.result] = resp.answer;
+                        setDictOfVars({
+                            ...dictOfVars,
+                            [data.expr]: data.result
+                        });
+                    }
+                });
+                
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx!.getImageData(0, 0, canvas.width, canvas.height);
+                let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
 
-            for (let y = 0; y < canvas.height; y++) {
-                for (let x = 0; x < canvas.width; x++) {
-                    const i = (y * canvas.width + x) * 4;
-                    if (imageData.data[i + 3] > 0) {  // If pixel is not transparent
-                        minX = Math.min(minX, x);
-                        minY = Math.min(minY, y);
-                        maxX = Math.max(maxX, x);
-                        maxY = Math.max(maxY, y);
+                for (let y = 0; y < canvas.height; y++) {
+                    for (let x = 0; x < canvas.width; x++) {
+                        const i = (y * canvas.width + x) * 4;
+                        if (imageData.data[i + 3] > 0) {  // If pixel is not transparent
+                            minX = Math.min(minX, x);
+                            minY = Math.min(minY, y);
+                            maxX = Math.max(maxX, x);
+                            maxY = Math.max(maxY, y);
+                        }
                     }
                 }
+
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+
+                setLatexPosition({ x: centerX, y: centerY });
+                resp.data.forEach((data: Response) => {
+                    setTimeout(() => {
+                        setResult({
+                            expression: data.expr,
+                            answer: data.result
+                        });
+                    }, 1000);
+                });
+            } catch (error) {
+                console.error('Error in API call:', error);
+                // You could add user-friendly error handling here
             }
-
-            const centerX = (minX + maxX) / 2;
-            const centerY = (minY + maxY) / 2;
-
-            setLatexPosition({ x: centerX, y: centerY });
-            resp.data.forEach((data: Response) => {
-                setTimeout(() => {
-                    setResult({
-                        expression: data.expr,
-                        answer: data.result
-                    });
-                }, 1000);
-            });
         }
     };
 
