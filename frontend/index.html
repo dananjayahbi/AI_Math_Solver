@@ -4,7 +4,53 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>AI Math Solver</title>
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']],
+          processEscapes: true
+        },
+        svg: {
+          fontCache: 'global',
+          scale: 1,                   // Global scaling factor for all expressions
+          minScale: .5,               // Smallest scaling factor to use
+          mtextInheritFont: false,    // True to make mtext elements use surrounding font
+          merrorInheritFont: true,    // True to make merror text use surrounding font
+          mathmlSpacing: false,       // True for MathML spacing rules, false for TeX rules
+          skipAttributes: {},         // Attributes to skip when cleaning SVG
+          exFactor: .5,               // Default size of ex in em units
+          displayAlign: 'center',     // Default for indentalign when set to 'auto'
+          displayIndent: '0'          // Default for indentshift when set to 'auto'
+        },
+        menuSettings: {
+          zoom: "None"                // Disable zoom feature
+        },
+        options: {
+          enableMenu: false           // Disable the menu completely
+        },
+        startup: {
+          typeset: true
+        },
+        UI: {
+          menu: {
+            settings: {
+              renderer: "SVG",        // Use SVG renderer
+              assistiveMML: false,    // Disable assistive MathML
+              zoom: "None",           // Disable zoom 
+              zscale: "150%",         // Zoom scaling factor
+              texHints: true,         // Show TeX hints
+              semantics: false,       // Add semantic info
+              explorer: false         // Disable explorer mode
+            }
+          }
+        }
+      };
+    </script>
+    <script type="text/javascript" id="MathJax-script" async
+      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+    </script>
   </head>
   <body>
     <div id="root"></div>
