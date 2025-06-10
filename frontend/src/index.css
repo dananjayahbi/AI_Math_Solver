@@ -9,6 +9,50 @@
   max-width: 100%;
 }
 
+/* Hide only specific MathJax UI elements */
+.MJX_LiveRegion,
+.mjx-menu-button,
+.mjx-tool-button,
+.MJX_Assistive_MathML,
+.mjx-rollup,
+.MathJax_MathML,
+mjx-container mjx-assistive-mml {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Hide only UI controls in MathJax equations, not the actual equation */
+mjx-container > svg > g[data-name="annotations"],
+mjx-container svg g[data-name="accessAnnotations"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Ensure no hover effects on MathJax control elements */
+mjx-container [data-name="annotations"]:hover {
+  background-color: transparent !important;
+  outline: none !important;
+}
+
+/* Hide MathJax UI elements */
+.MJX_LiveRegion,
+.mjx-menu-button,
+.mjx-tool-button,
+.MJX_Assistive_MathML,
+.mjx-rollup,
+.MathJax_MathML,
+mjx-container mjx-assistive-mml,
+mjx-container svg > g[data-mml-node="merror"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .formula-card {
   @apply bg-gray-800 p-4 rounded-lg transition-all hover:shadow-lg border border-gray-700;
 }

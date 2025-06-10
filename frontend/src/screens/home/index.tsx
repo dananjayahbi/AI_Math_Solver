@@ -59,7 +59,8 @@ export default function Home() {
         // Ensure answer is a string before calling replace
         const answerStr = String(answer);
         const escapedAnswer = answerStr.replace(/\\/g, '\\\\');
-        const latex = `\\\\large{${escapedExpr} = ${escapedAnswer}}`;
+        // Use proper LaTeX formatting - with correct escaping for MathJax
+        const latex = `\\(${escapedExpr} = ${escapedAnswer}\\)`;
         
         setLatexExpression(prevExpressions => [...prevExpressions, latex]);
 
@@ -130,7 +131,22 @@ export default function Home() {
         }
         
         // MathJax is already configured in index.html
-        // No need to configure it here
+        // Additional runtime configuration to ensure UI elements are disabled
+        if (window.MathJax) {
+            // Force disable only MathJax UI control elements after rendering
+            setTimeout(() => {
+                // Target only UI controls but preserve the actual math content
+                document.querySelectorAll('mjx-container svg').forEach(svg => {
+                    // Find elements with data-name="annotations" (the scrolling control)
+                    const uiControls = svg.querySelectorAll('g[data-name="annotations"]');
+                    uiControls.forEach(control => {
+                        if (control.parentNode) {
+                            control.parentNode.removeChild(control);
+                        }
+                    });
+                });
+            }, 500);
+        }
         
         return () => {
             // Cleanup if needed
@@ -315,7 +331,7 @@ export default function Home() {
                     onStop={(_, data) => setLatexPosition({ x: data.x, y: data.y })}
                 >
                     <div className="absolute p-2 text-white bg-black bg-opacity-50 rounded shadow-md">
-                        <div className="latex-content" dangerouslySetInnerHTML={{ __html: latex }}></div>
+                        <div className="latex-content math-output" dangerouslySetInnerHTML={{ __html: latex }}></div>
                         
                         {result && result.steps && result.steps.length > 0 && showDetailedSteps && (
                             <StepByStepSolution 
