@@ -3,18 +3,34 @@ import { Button } from '@/components/ui/button';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import Draggable from 'react-draggable';
-import {SWATCHES} from '@/constants';
+import { SWATCHES } from '@/constants';
+import ModeSelector from '@/components/ModeSelector';
+import FormulaReference from '@/components/FormulaReference';
+import StepByStepSolution from '@/components/StepByStepSolution';
 // import {LazyBrush} from 'lazy-brush';
+
+interface FormulaInfo {
+  name: string;
+  formula: string;
+  explanation: string;
+}
+
+// Define a type that can represent all possible result types
+type MathResult = string | number | boolean | null;
 
 interface GeneratedResult {
     expression: string;
-    answer: string;
+    answer: MathResult; // Using our custom type instead of any
+    steps?: string[];
+    formulas_used?: FormulaInfo[];
 }
 
 interface Response {
     expr: string;
-    result: string;
+    result: MathResult; // Using our custom type instead of any
     assign: boolean;
+    steps?: string[];
+    formulas_used?: FormulaInfo[];
 }
 
 export default function Home() {
@@ -24,6 +40,10 @@ export default function Home() {
     const [reset, setReset] = useState(false);
     const [dictOfVars, setDictOfVars] = useState({});
     const [result, setResult] = useState<GeneratedResult>();
+    const [mathMode, setMathMode] = useState('basic');
+    const [showDetailedSteps, setShowDetailedSteps] = useState(false);
+    const [showFormulaReference, setShowFormulaReference] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [latexPosition, setLatexPosition] = useState({ x: 10, y: 200 });
     const [latexExpression, setLatexExpression] = useState<Array<string>>([]);
 
@@ -33,8 +53,14 @@ export default function Home() {
     //     initialPoint: { x: 0, y: 0 },
     // });
     
-    const renderLatexToCanvas = useCallback((expression: string, answer: string) => {
-        const latex = `\\(\\LARGE{${expression} = ${answer}}\\)`;
+    const renderLatexToCanvas = useCallback((expression: string, answer: MathResult) => {
+        // Format the LaTeX with proper sizing and escaping
+        const escapedExpr = expression.replace(/\\/g, '\\\\');
+        // Ensure answer is a string before calling replace
+        const answerStr = String(answer);
+        const escapedAnswer = answerStr.replace(/\\/g, '\\\\');
+        const latex = `\\\\large{${escapedExpr} = ${escapedAnswer}}`;
+        
         setLatexExpression(prevExpressions => [...prevExpressions, latex]);
 
         // Clear the main canvas
@@ -48,10 +74,29 @@ export default function Home() {
     }, []);
 
     useEffect(() => {
-        if (latexExpression.length > 0 && window.MathJax) {
-            setTimeout(() => {
-                window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub]);
-            }, 0);
+        if (latexExpression.length > 0) {
+            // For MathJax 3.x - wait for it to be loaded
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                // If MathJax is already loaded, typeset immediately
+                setTimeout(() => {
+                    window.MathJax.typesetPromise?.()
+                        .catch((err) => console.error('MathJax typesetting failed:', err));
+                }, 100);
+            } else {
+                // If MathJax is not loaded yet, set up a check every 100ms
+                const checkInterval = setInterval(() => {
+                    if (window.MathJax && window.MathJax.typesetPromise) {
+                        clearInterval(checkInterval);
+                        window.MathJax.typesetPromise?.()
+                            .catch((err) => console.error('MathJax typesetting failed:', err));
+                    }
+                }, 100);
+                
+                // Clear interval after 5 seconds to prevent infinite checking
+                setTimeout(() => clearInterval(checkInterval), 5000);
+                
+                return () => clearInterval(checkInterval);
+            }
         }
     }, [latexExpression]);
 
@@ -84,19 +129,11 @@ export default function Home() {
             }
         }
         
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML';
-        script.async = true;
-        document.head.appendChild(script);
-
-        script.onload = () => {
-            window.MathJax.Hub.Config({
-                tex2jax: {inlineMath: [['$', '$'], ['\\(', '\\)']]},
-            });
-        };
-
+        // MathJax is already configured in index.html
+        // No need to configure it here
+        
         return () => {
-            document.head.removeChild(script);
+            // Cleanup if needed
         };
     }, []);
 
@@ -147,12 +184,15 @@ export default function Home() {
     
         if (canvas) {
             try {
+                setLoading(true);
                 const response = await axios({
                     method: 'post',
                     url: `${import.meta.env.VITE_API_URL}/calculate`,
                     data: {
                         image: canvas.toDataURL('image/png'),
-                        dict_of_vars: dictOfVars
+                        dict_of_vars: dictOfVars,
+                        mode: mathMode,
+                        detailed_steps: showDetailedSteps
                     }
                 });
 
@@ -192,46 +232,76 @@ export default function Home() {
                     setTimeout(() => {
                         setResult({
                             expression: data.expr,
-                            answer: data.result
+                            answer: data.result,
+                            steps: data.steps,
+                            formulas_used: data.formulas_used
                         });
                     }, 1000);
                 });
             } catch (error) {
                 console.error('Error in API call:', error);
                 // You could add user-friendly error handling here
+            } finally {
+                setLoading(false);
             }
         }
     };
 
     return (
         <>
-            <div className='grid grid-cols-3 gap-2'>
-                <Button
-                    onClick={() => setReset(true)}
-                    className='z-20 bg-black text-white'
-                    variant='default' 
-                    color='black'
-                >
-                    Reset
-                </Button>
+            <div className='grid grid-cols-1 md:grid-cols-3 gap-2 p-4 bg-gray-900'>
+                <div className='flex flex-col space-y-2'>
+                    <Button
+                        onClick={() => setReset(true)}
+                        className='z-20 bg-slate-800 hover:bg-slate-700 text-white'
+                        variant='default' 
+                    >
+                        Reset
+                    </Button>
+                    
+                    <ModeSelector
+                        selectedMode={mathMode}
+                        onModeChange={setMathMode}
+                        showDetailedSteps={showDetailedSteps}
+                        onToggleDetailedSteps={() => setShowDetailedSteps(prev => !prev)}
+                    />
+                </div>
+
                 <Group className='z-20'>
                     {SWATCHES.map((swatch) => (
                         <ColorSwatch key={swatch} color={swatch} onClick={() => setColor(swatch)} />
                     ))}
                 </Group>
-                <Button
-                    onClick={runRoute}
-                    className='z-20 bg-black text-white'
-                    variant='default'
-                    color='white'
-                >
-                    Run
-                </Button>
+                
+                <div className='flex flex-col space-y-2'>
+                    <Button
+                        onClick={runRoute}
+                        className='z-20 bg-slate-800 hover:bg-slate-700 text-white'
+                        variant='default'
+                        disabled={loading}
+                    >
+                        {loading ? (
+                            <div className="flex items-center">
+                                <div className="animate-spin mr-2 h-4 w-4 border-t-2 border-b-2 border-white rounded-full"></div>
+                                Processing...
+                            </div>
+                        ) : 'Solve'}
+                    </Button>
+                    
+                    <Button
+                        onClick={() => setShowFormulaReference(true)}
+                        className='z-20 bg-blue-800 hover:bg-blue-700 text-white'
+                        variant='default'
+                    >
+                        Formula Reference
+                    </Button>
+                </div>
             </div>
+
             <canvas
                 ref={canvasRef}
                 id='canvas'
-                className='absolute top-0 left-0 w-full h-full'
+                className='absolute top-16 left-0 w-full h-[calc(100%-4rem)]'
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
@@ -242,13 +312,26 @@ export default function Home() {
                 <Draggable
                     key={index}
                     defaultPosition={latexPosition}
-                    onStop={(e, data) => setLatexPosition({ x: data.x, y: data.y })}
+                    onStop={(_, data) => setLatexPosition({ x: data.x, y: data.y })}
                 >
-                    <div className="absolute p-2 text-white rounded shadow-md">
-                        <div className="latex-content">{latex}</div>
+                    <div className="absolute p-2 text-white bg-black bg-opacity-50 rounded shadow-md">
+                        <div className="latex-content" dangerouslySetInnerHTML={{ __html: latex }}></div>
+                        
+                        {result && result.steps && result.steps.length > 0 && showDetailedSteps && (
+                            <StepByStepSolution 
+                                steps={result.steps} 
+                                formulas={result.formulas_used || null} 
+                            />
+                        )}
                     </div>
                 </Draggable>
             ))}
+
+            <FormulaReference 
+                mode={mathMode}
+                isVisible={showFormulaReference}
+                onClose={() => setShowFormulaReference(false)}
+            />
         </>
     );
 }

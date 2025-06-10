@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from apps.calculator.route import router as calculator_router
+from apps.formulas.route import router as formulas_router
 from constants import SERVER_URL, PORT, ENV
 
 @asynccontextmanager
@@ -26,6 +27,7 @@ async def root():
     return {"message": "Server is running"}
 
 app.include_router(calculator_router, prefix="/calculate", tags=["calculate"])
+app.include_router(formulas_router, prefix="/formulas", tags=["formulas"])
 
 
 if __name__ == "__main__":

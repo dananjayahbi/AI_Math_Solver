@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+.latex-content {
+  font-size: 1.2rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.formula-card {
+  @apply bg-gray-800 p-4 rounded-lg transition-all hover:shadow-lg border border-gray-700;
+}
+
+.steps-container {
+  max-height: 300px;
+  overflow-y: auto;
+  @apply bg-gray-800 p-4 rounded-lg mt-4;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
