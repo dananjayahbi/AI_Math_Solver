@@ -7,6 +7,27 @@
   line-height: 1.5;
   overflow-x: auto;
   max-width: 100%;
+  color: #000; /* Ensure text is black for light theme */
+}
+
+/* Add styles for the selection area */
+#selectionCanvas {
+  pointer-events: none; /* Let events pass through to the drawing canvas */
+}
+
+/* Style for the collapsible content */
+.collapsible-content {
+  transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out, margin-top 0.3s ease;
+  overflow: hidden;
+}
+
+.collapsible-icon {
+  transition: transform 0.3s ease;
+}
+
+/* MathJax specific styling for light theme */
+mjx-container {
+  color: #000 !important;
 }
 
 /* Hide only specific MathJax UI elements */
