@@ -20,6 +20,11 @@ interface FormulaInfo {
 // Define a type that can represent all possible result types
 type MathResult = string | number | boolean | null;
 
+interface LatexExpressionItem {
+    latex: string;
+    position: { x: number; y: number };
+}
+
 interface GeneratedResult {
     expression: string;
     answer: MathResult; // Using our custom type instead of any
@@ -40,8 +45,12 @@ export default function Home() {
     const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [isSelecting, setIsSelecting] = useState(false);
-    const [selectionStart, setSelectionStart] = useState({ x: 0, y: 0 });
-    const [selectionEnd, setSelectionEnd] = useState({ x: 0, y: 0 });
+    
+    // For free-form selection
+    const [selectionPath, setSelectionPath] = useState<Array<{x: number, y: number}>>([]);
+    const [selectionBounds, setSelectionBounds] = useState<{minX: number, minY: number, maxX: number, maxY: number} | null>(null);
+    const [selectionCenter, setSelectionCenter] = useState<{x: number, y: number} | null>(null);
+    
     const [selectionActive, setSelectionActive] = useState(false);
     const [selectionMode, setSelectionMode] = useState(false);
     const [color, setColor] = useState('rgb(0, 0, 0)'); // Changed to black for white background
@@ -53,7 +62,7 @@ export default function Home() {
     const [showFormulaReference, setShowFormulaReference] = useState(false);
     const [loading, setLoading] = useState(false);
     const [latexPosition, setLatexPosition] = useState({ x: 10, y: 200 });
-    const [latexExpression, setLatexExpression] = useState<Array<string>>([]);
+    const [latexExpression, setLatexExpression] = useState<Array<LatexExpressionItem>>([]);
 
     // const lazyBrush = new LazyBrush({
     //     radius: 10,
@@ -70,17 +79,30 @@ export default function Home() {
         // Use proper LaTeX formatting - with correct escaping for MathJax
         const latex = `\\(${escapedExpr} = ${escapedAnswer}\\)`;
         
-        setLatexExpression(prevExpressions => [...prevExpressions, latex]);
+        // Only add new LaTeX answers to the position where the selection was made
+        console.log('Adding LaTeX at position:', latexPosition);
+        // Use the current center point of the selection for positioning
+        setLatexExpression(prevExpressions => [
+            ...prevExpressions, 
+            {
+                latex: latex,
+                position: {
+                    x: latexPosition.x,
+                    y: latexPosition.y
+                }
+            }
+        ]);
 
-        // Clear the main canvas
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
+        // Reset selection but do not clear the canvas
+        setSelectionActive(false);
+        const selectionCanvas = selectionCanvasRef.current;
+        if (selectionCanvas) {
+            const ctx = selectionCanvas.getContext('2d');
             if (ctx) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
             }
         }
-    }, []);
+    }, [latexPosition]);
 
     useEffect(() => {
         if (latexExpression.length > 0) {
@@ -111,7 +133,10 @@ export default function Home() {
 
     useEffect(() => {
         if (result) {
-            renderLatexToCanvas(result.expression, result.answer);
+            renderLatexToCanvas(
+                result.expression, 
+                result.answer
+            );
         }
     }, [result, renderLatexToCanvas]);
 
@@ -270,13 +295,56 @@ export default function Home() {
         setIsDrawing(false);
     };
     
-    // Selection functions
+    // Function to calculate if a point is inside a polygon (free-form selection)
+    // This is used for pixel-level masking in the free-form selection
+    // The function is called for each pixel in the selection area in runRoute()
+    const isPointInPath = (point: {x: number, y: number}, path: Array<{x: number, y: number}>): boolean => {
+        // Point-in-polygon algorithm (ray casting)
+        let inside = false;
+        for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+            const xi = path[i].x, yi = path[i].y;
+            const xj = path[j].x, yj = path[j].y;
+            
+            const intersect = ((yi > point.y) !== (yj > point.y)) &&
+                (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    };
+    
+    // Function to calculate the bounding box and center of a path
+    const calculatePathBounds = (path: Array<{x: number, y: number}>) => {
+        if (path.length === 0) return null;
+        
+        let minX = path[0].x;
+        let minY = path[0].y;
+        let maxX = path[0].x;
+        let maxY = path[0].y;
+        
+        path.forEach(point => {
+            minX = Math.min(minX, point.x);
+            minY = Math.min(minY, point.y);
+            maxX = Math.max(maxX, point.x);
+            maxY = Math.max(maxY, point.y);
+        });
+        
+        // Calculate center
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        
+        return {
+            bounds: { minX, minY, maxX, maxY },
+            center: { x: centerX, y: centerY }
+        };
+    };
+
+    // Selection functions - now with free-form selection
     const startSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
         const x = e.nativeEvent.offsetX;
         const y = e.nativeEvent.offsetY;
         
-        setSelectionStart({ x, y });
-        setSelectionEnd({ x, y });
+        // Initialize a new path with the starting point
+        setSelectionPath([{ x, y }]);
         setIsSelecting(true);
         
         // Clear previous selection
@@ -285,6 +353,13 @@ export default function Home() {
             const ctx = selectionCanvas.getContext('2d');
             if (ctx) {
                 ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+                
+                // Start a new path
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([]);
             }
         }
     };
@@ -295,31 +370,94 @@ export default function Home() {
         const x = e.nativeEvent.offsetX;
         const y = e.nativeEvent.offsetY;
         
-        setSelectionEnd({ x, y });
+        // Add the new point to the path
+        setSelectionPath(prev => [...prev, { x, y }]);
         
-        // Draw selection rectangle
+        // Draw the selection path
         const selectionCanvas = selectionCanvasRef.current;
         if (selectionCanvas) {
             const ctx = selectionCanvas.getContext('2d');
             if (ctx) {
+                // Clear the canvas and redraw the entire path
                 ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
-                ctx.strokeStyle = 'rgba(0, 123, 255, 0.5)';
+                
+                // Draw the entire path with a smoother appearance
+                ctx.beginPath();
+                ctx.moveTo(selectionPath[0].x, selectionPath[0].y);
+                
+                for (let i = 1; i < selectionPath.length; i++) {
+                    ctx.lineTo(selectionPath[i].x, selectionPath[i].y);
+                }
+                
+                ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
                 ctx.lineWidth = 2;
-                ctx.setLineDash([5, 5]);
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.stroke();
                 
-                const width = x - selectionStart.x;
-                const height = y - selectionStart.y;
-                
-                ctx.strokeRect(selectionStart.x, selectionStart.y, width, height);
-                ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
-                ctx.fillRect(selectionStart.x, selectionStart.y, width, height);
+                // Add a subtle fill to show the selected area
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.08)';
+                ctx.fill();
             }
         }
     };
     
     const endSelection = () => {
         setIsSelecting(false);
-        setSelectionActive(true);
+        
+        // Close the path if needed
+        const selectionCanvas = selectionCanvasRef.current;
+        if (selectionCanvas && selectionPath.length > 2) {
+            const ctx = selectionCanvas.getContext('2d');
+            if (ctx) {
+                // Clear and redraw the entire path to ensure it's closed correctly
+                ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+                
+                // Draw the complete path with the first point added at the end to close it
+                ctx.beginPath();
+                ctx.moveTo(selectionPath[0].x, selectionPath[0].y);
+                
+                // Draw all points
+                for (let i = 1; i < selectionPath.length; i++) {
+                    ctx.lineTo(selectionPath[i].x, selectionPath[i].y);
+                }
+                
+                // Close back to the first point
+                ctx.lineTo(selectionPath[0].x, selectionPath[0].y);
+                
+                // Style the outline
+                ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Fill the selection area
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
+                ctx.fill();
+                
+                // Calculate the bounds and center of the selection
+                const pathInfo = calculatePathBounds(selectionPath);
+                if (pathInfo) {
+                    setSelectionBounds(pathInfo.bounds);
+                    setSelectionCenter(pathInfo.center);
+                    setSelectionActive(true);
+                    
+                    // Add a visual indicator at the center point
+                    ctx.beginPath();
+                    ctx.arc(pathInfo.center.x, pathInfo.center.y, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 123, 255, 0.6)';
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
+        } else {
+            // Clear the selection if it's too small
+            setSelectionPath([]);
+            setSelectionActive(false);
+        }
     };
     
     const toggleSelectionMode = () => {
@@ -336,7 +474,9 @@ export default function Home() {
                 }
             }
         }
-    };  
+    };
+    
+    // Helper function to get canvas position relative to the viewport (now inlined where needed)
 
     const runRoute = async () => {
         const canvas = canvasRef.current;
@@ -353,39 +493,122 @@ export default function Home() {
                     maxX: canvas.width,
                     maxY: canvas.height
                 };
+                let centerPoint = {
+                    x: canvas.width / 2,
+                    y: canvas.height / 2
+                };
 
                 if (selectionActive && selectionMode) {
                     // Create a temporary canvas for the selected area
                     const tempCanvas = document.createElement('canvas');
                     const tempCtx = tempCanvas.getContext('2d');
                     
-                    // Calculate selection bounds (ensure start < end)
-                    const startX = Math.min(selectionStart.x, selectionEnd.x);
-                    const startY = Math.min(selectionStart.y, selectionEnd.y);
-                    const width = Math.abs(selectionEnd.x - selectionStart.x);
-                    const height = Math.abs(selectionEnd.y - selectionStart.y);
-                    
-                    // Set temp canvas size to selection size
-                    tempCanvas.width = width;
-                    tempCanvas.height = height;
-                    
-                    // Copy selected region to temp canvas
-                    tempCtx!.drawImage(
-                        canvas,
-                        startX, startY, width, height,
-                        0, 0, width, height
-                    );
-                    
-                    // Use the temp canvas for the API call
-                    imageData = tempCanvas.toDataURL('image/png');
-                    
-                    // Update bounding rect for position calculation
-                    boundingRect = {
-                        minX: startX,
-                        minY: startY,
-                        maxX: startX + width,
-                        maxY: startY + height
-                    };
+                    if (selectionBounds && selectionCenter && selectionPath.length > 2) {
+                        // Use the free-form selection bounds
+                        boundingRect = selectionBounds;
+                        centerPoint = selectionCenter;
+                        
+                        // Calculate width and height from bounds
+                        const width = boundingRect.maxX - boundingRect.minX;
+                        const height = boundingRect.maxY - boundingRect.minY;
+                        
+                        // Set temp canvas size to selection size
+                        tempCanvas.width = width;
+                        tempCanvas.height = height;
+                        
+                        // Create a masked version of the selection area using pixel-level masking
+                        tempCtx!.save();
+                        
+                        // First, draw the original image to the temp canvas
+                        tempCtx!.drawImage(
+                            canvas,
+                            boundingRect.minX, boundingRect.minY, width, height,
+                            0, 0, width, height
+                        );
+                        
+                        // Create an image data object to manipulate pixels
+                        const tempImageData = tempCtx!.getImageData(0, 0, width, height);
+                        const data = tempImageData.data;
+                        
+                        // Apply pixel-level masking using isPointInPath
+                        // Use a faster approach - check every 4th pixel for large areas
+                        // and every pixel near the border for precision
+                        const padding = 5; // Pixels to check at full resolution near the border
+                        
+                        // Calculate the shape border area
+                        const border = {
+                            minX: Math.max(0, Math.floor((selectionBounds.minX - boundingRect.minX) - padding)),
+                            minY: Math.max(0, Math.floor((selectionBounds.minY - boundingRect.minY) - padding)),
+                            maxX: Math.min(width, Math.ceil((selectionBounds.maxX - boundingRect.minX) + padding)),
+                            maxY: Math.min(height, Math.ceil((selectionBounds.maxY - boundingRect.minY) + padding))
+                        };
+                        
+                        for (let y = 0; y < height; y++) {
+                            for (let x = 0; x < width; x++) {
+                                // Convert to original canvas coordinates
+                                const origX = x + boundingRect.minX;
+                                const origY = y + boundingRect.minY;
+                                
+                                // Skip some pixels in non-border areas for performance
+                                const isInBorderArea = 
+                                    x >= border.minX && x <= border.maxX && 
+                                    y >= border.minY && y <= border.maxY;
+                                    
+                                // Check fewer pixels in the center (every 4th) but all pixels near the border
+                                if (isInBorderArea || (x % 4 === 0 && y % 4 === 0)) {
+                                    // Check if this pixel is inside the selection path
+                                    if (!isPointInPath({x: origX, y: origY}, selectionPath)) {
+                                        // If not inside, make this pixel and nearby pixels transparent
+                                        const pixelIndex = (y * width + x) * 4;
+                                        data[pixelIndex + 3] = 0; // Set alpha to 0 (transparent)
+                                        
+                                        // If we're skipping pixels, also set the neighbors transparent
+                                        if (!isInBorderArea) {
+                                            // Make the next 3 pixels in each direction transparent too
+                                            for (let ny = 0; ny < 4 && y + ny < height; ny++) {
+                                                for (let nx = 0; nx < 4 && x + nx < width; nx++) {
+                                                    if (nx === 0 && ny === 0) continue; // Skip the pixel we already set
+                                                    const neighborIdx = ((y + ny) * width + (x + nx)) * 4;
+                                                    data[neighborIdx + 3] = 0;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Put the modified image data back to the canvas
+                        tempCtx!.putImageData(tempImageData, 0, 0);
+                        
+                        // Also draw the path for visualization
+                        tempCtx!.beginPath();
+                        tempCtx!.moveTo(
+                            selectionPath[0].x - boundingRect.minX,
+                            selectionPath[0].y - boundingRect.minY
+                        );
+                        
+                        for (let i = 1; i < selectionPath.length; i++) {
+                            tempCtx!.lineTo(
+                                selectionPath[i].x - boundingRect.minX,
+                                selectionPath[i].y - boundingRect.minY
+                            );
+                        }
+                        
+                        // Close the path and draw a subtle outline
+                        tempCtx!.closePath();
+                        
+                        // Update the imageData string with our pixel-masked canvas
+                        imageData = tempCanvas.toDataURL('image/png');
+                        
+                        tempCtx!.restore();
+                        
+                        // Use the masked temp canvas for the API call
+                        imageData = tempCanvas.toDataURL('image/png');
+                    } else {
+                        // Fallback to full canvas if selection is invalid
+                        imageData = canvas.toDataURL('image/png');
+                    }
                 } else {
                     // Use the entire canvas
                     imageData = canvas.toDataURL('image/png');
@@ -413,11 +636,19 @@ export default function Home() {
                     }
                 });
                 
-                // Calculate positioning based on the bounding rect (either selection or whole canvas)
-                const centerX = (boundingRect.minX + boundingRect.maxX) / 2;
-                const centerY = (boundingRect.minY + boundingRect.maxY) / 2;
-
-                setLatexPosition({ x: centerX, y: centerY });
+                // Use the calculated center point from the selection
+                console.log('Selection center:', centerPoint);
+                console.log('Bounds:', boundingRect);
+                
+                // Use the center point directly - it's already correct for positioning
+                const newPosition = {
+                    x: centerPoint.x,
+                    y: centerPoint.y 
+                };
+                
+                console.log('Setting LaTeX position to:', newPosition);
+                
+                setLatexPosition(newPosition);
                 resp.data.forEach((data: Response) => {
                     setTimeout(() => {
                         setResult({
@@ -472,19 +703,31 @@ export default function Home() {
                 </Group>
                 
                 <div className='flex flex-col space-y-2'>
-                    <Button
-                        onClick={runRoute}
-                        className='z-20 bg-blue-500 hover:bg-blue-600 text-white'
-                        variant='default'
-                        disabled={loading}
-                    >
-                        {loading ? (
-                            <div className="flex items-center">
-                                <div className="animate-spin mr-2 h-4 w-4 border-t-2 border-b-2 border-white rounded-full"></div>
-                                Processing...
+                    <div className="relative">
+                        <Button
+                            onClick={runRoute}
+                            className={`z-20 w-full ${
+                                loading || (selectionMode && !selectionActive) 
+                                    ? 'bg-gray-400 cursor-not-allowed' 
+                                    : 'bg-blue-500 hover:bg-blue-600'
+                            } text-white`}
+                            variant='default'
+                            disabled={loading || (selectionMode && !selectionActive)}
+                            title={selectionMode && !selectionActive ? "Draw a selection around a math problem first" : ""}
+                        >
+                            {loading ? (
+                                <div className="flex items-center justify-center">
+                                    <div className="animate-spin mr-2 h-4 w-4 border-t-2 border-b-2 border-white rounded-full"></div>
+                                    Processing...
+                                </div>
+                            ) : 'Solve'}
+                        </Button>
+                        {selectionMode && !selectionActive && (
+                            <div className="absolute -bottom-6 left-0 right-0 text-xs text-gray-500 text-center">
+                                Draw a selection first
                             </div>
-                        ) : 'Solve'}
-                    </Button>
+                        )}
+                    </div>
                     
                     <Button
                         onClick={() => setShowFormulaReference(true)}
@@ -496,7 +739,7 @@ export default function Home() {
                 </div>
             </div>
 
-            <div className="relative w-full h-[calc(100vh-4rem)]">
+            <div className="relative w-full h-[calc(100vh-4rem)]" id="canvas-container">
                 <canvas
                     ref={canvasRef}
                     id='canvas'
@@ -511,26 +754,68 @@ export default function Home() {
                     id='selectionCanvas'
                     className='absolute top-16 left-0 w-full h-[calc(100vh-4rem)] z-10 pointer-events-none'
                 />
+                
+                {/* Fixed positioned container for LaTeX output - positioned relative to the canvas */}
+                <div className="absolute top-16 left-0 w-full h-[calc(100vh-4rem)] pointer-events-none z-20">
+                {/* Simple debug overlay to visualize positions */}
+                <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                    {latexExpression && latexExpression.map((item, index) => (
+                        <circle 
+                            key={`debug-${index}`}
+                            cx={item.position.x} 
+                            cy={item.position.y}
+                            r="3" 
+                            fill="rgba(255, 0, 0, 0.7)" 
+                        />
+                    ))}
+                </svg>
+                {latexExpression && latexExpression.map((item, index) => (
+                    <Draggable
+                        key={index}
+                        defaultPosition={{
+                            // Center the LaTeX element precisely over the selection point
+                            x: item.position.x,
+                            y: item.position.y
+                        }}
+                        positionOffset={{
+                            x: -150, // Center horizontally (approximately half the width)
+                            y: -40   // Position slightly above the equation
+                        }}
+                        bounds="parent"
+                        onStop={(_, data) => {
+                            // Update the position when dragging stops
+                            const newExpressions = [...latexExpression];
+                            newExpressions[index].position = { 
+                                x: data.x,
+                                y: data.y 
+                            };
+                            setLatexExpression(newExpressions);
+                        }}
+                    >
+                        <div className="pointer-events-auto latex-answer-container animate-fade-in relative cursor-move">
+                            <button 
+                                className="absolute -top-2 -right-2 bg-gray-200 bg-opacity-80 hover:bg-gray-300 text-gray-600 w-5 h-5 flex items-center justify-center rounded-full text-xs cursor-pointer"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const newExpressions = latexExpression.filter((_, i) => i !== index);
+                                    setLatexExpression(newExpressions);
+                                }}
+                            >
+                                ×
+                            </button>
+                            <div className="latex-content math-output" dangerouslySetInnerHTML={{ __html: item.latex }}></div>
+                            
+                            {result && result.steps && result.steps.length > 0 && showDetailedSteps && (
+                                <StepByStepSolution 
+                                    steps={result.steps} 
+                                    formulas={result.formulas_used || null} 
+                                />
+                            )}
+                        </div>
+                    </Draggable>
+                ))}
+                </div>
             </div>
-
-            {latexExpression && latexExpression.map((latex, index) => (
-                <Draggable
-                    key={index}
-                    defaultPosition={latexPosition}
-                    onStop={(_, data) => setLatexPosition({ x: data.x, y: data.y })}
-                >
-                    <div className="absolute p-3 text-gray-900 bg-white border border-gray-200 rounded-lg shadow-md">
-                        <div className="latex-content math-output" dangerouslySetInnerHTML={{ __html: latex }}></div>
-                        
-                        {result && result.steps && result.steps.length > 0 && showDetailedSteps && (
-                            <StepByStepSolution 
-                                steps={result.steps} 
-                                formulas={result.formulas_used || null} 
-                            />
-                        )}
-                    </div>
-                </Draggable>
-            ))}
 
             <FormulaReference 
                 mode={mathMode}
