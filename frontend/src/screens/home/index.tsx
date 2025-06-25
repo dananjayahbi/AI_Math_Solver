@@ -292,27 +292,21 @@ export default function Home() {
     const handleLatexPositionChange = (index: number, x: number, y: number) => {
         console.log(`Setting new position for latex ${index}: x=${x}, y=${y}`);
         
-        // Create a deep copy to ensure React detects the change
-        const newExpressions = latexExpression.map((expr, i) => {
-            if (i === index) {
-                return {
-                    ...expr,
-                    position: { 
-                        x: x, // Store the exact position
-                        y: y  // Store the exact position
-                    }
-                };
-            }
-            return expr;
+        // Use functional update to avoid stale state issues
+        setLatexExpression(prevExpressions => {
+            return prevExpressions.map((expr, i) => {
+                if (i === index) {
+                    return {
+                        ...expr,
+                        position: { 
+                            x, // Store the exact position
+                            y  // Store the exact position
+                        }
+                    };
+                }
+                return expr;
+            });
         });
-        
-        // Force update by setting state
-        setLatexExpression(newExpressions);
-        
-        // Debug check for position update
-        setTimeout(() => {
-            console.log('Updated position state:', latexExpression[index]?.position);
-        }, 0);
     };
 
     // Handle deletion of LaTeX expressions

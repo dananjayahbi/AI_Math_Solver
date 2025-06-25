@@ -27,10 +27,16 @@ export default function LatexAnswer({
   showDetailedSteps,
   onPositionChange,
   onDelete
-}: LatexAnswerProps) {  
-  const [zIndex, setZIndex] = useState(30);
+}: LatexAnswerProps) {    const [zIndex, setZIndex] = useState(30);
   const [isDragging, setIsDragging] = useState(false);
   const nodeRef = useRef<HTMLDivElement>(null);
+  // Use local state to track position during drag for smooth visual updates
+  const [localPosition, setLocalPosition] = useState({ x: item.position.x, y: item.position.y });
+  
+  // Sync local position with item position when item.position changes
+  useEffect(() => {
+    setLocalPosition({ x: item.position.x, y: item.position.y });
+  }, [item.position.x, item.position.y]);
   
   // Debug log to check mounting
   useEffect(() => {
@@ -51,8 +57,8 @@ export default function LatexAnswer({
     // Get initial pointer and element positions
     const startX = e.clientX;
     const startY = e.clientY;
-    const startLeft = item.position.x;
-    const startTop = item.position.y;
+    const startLeft = localPosition.x;
+    const startTop = localPosition.y;
     
     // Set dragging state
     setIsDragging(true);
@@ -64,7 +70,7 @@ export default function LatexAnswer({
     
     // Handle pointer move
     const handlePointerMove = (moveEvent: PointerEvent) => {
-      if (isDragging && nodeRef.current) {
+      if (nodeRef.current) {
         // Calculate the distance moved
         const dx = moveEvent.clientX - startX;
         const dy = moveEvent.clientY - startY;
@@ -73,13 +79,11 @@ export default function LatexAnswer({
         const newX = startLeft + dx;
         const newY = startTop + dy;
         
-        // Update the element's position in state
-        onPositionChange(index, newX, newY);
+        // Update local position for immediate visual feedback
+        setLocalPosition({ x: newX, y: newY });
       }
-    };
-    
-    // Handle pointer up
-    const handlePointerUp = (upEvent: PointerEvent) => {
+    };    // Handle pointer up
+    const handlePointerUp = () => {
       // Release pointer capture
       if ((e.target as HTMLElement).hasPointerCapture(e.pointerId)) {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
@@ -88,16 +92,10 @@ export default function LatexAnswer({
       setIsDragging(false);
       setZIndex(30);
       
-      // Calculate final position
-      const dx = upEvent.clientX - startX;
-      const dy = upEvent.clientY - startY;
-      const finalX = startLeft + dx;
-      const finalY = startTop + dy;
+      console.log('Drag stopped for answer', index, 'at position', localPosition.x, localPosition.y);
       
-      console.log('Drag stopped for answer', index, 'at position', finalX, finalY);
-      
-      // Ensure position is updated
-      onPositionChange(index, finalX, finalY);
+      // Now update the parent component's state with our final position
+      onPositionChange(index, localPosition.x, localPosition.y);
       
       // Remove dragging class from body
       document.body.classList.remove('dragging-active');
@@ -111,8 +109,7 @@ export default function LatexAnswer({
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
   };
-  
-  return (<div 
+    return (<div 
         ref={nodeRef}
         id={`latex-container-${index}`}
         className={`pointer-events-auto animate-fade-in relative latex-answer-container ${isDragging ? 'dragging' : ''}`}
@@ -120,7 +117,7 @@ export default function LatexAnswer({
           backgroundColor: 'rgba(255, 255, 255, 0.97)',
           border: '2px solid rgba(59, 130, 246, 0.5)',
           borderRadius: '8px',
-          boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
+          boxShadow: isDragging ? '0 10px 25px rgba(0, 0, 0, 0.25)' : '0 4px 15px rgba(0, 0, 0, 0.2)',
           padding: '16px 16px 12px 16px',
           minWidth: '120px',
           maxWidth: '400px',
@@ -128,8 +125,8 @@ export default function LatexAnswer({
           zIndex,
           cursor: isDragging ? 'grabbing' : 'grab',
           position: 'absolute',
-          left: `${item.position.x}px`,
-          top: `${item.position.y}px`,
+          left: `${localPosition.x}px`,
+          top: `${localPosition.y}px`,
           transition: isDragging ? 'none' : 'all 0.2s ease',
           transform: isDragging ? 'scale(1.02)' : 'scale(1)',
           pointerEvents: 'auto',
