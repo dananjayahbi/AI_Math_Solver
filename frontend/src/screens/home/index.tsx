@@ -10,6 +10,61 @@ import { useApiIntegration } from '@/hooks/useApiIntegration';
 // Import MathJax types for TypeScript support
 import '@/types/mathjax';
 
+// Debug function to help identify event issues
+function debugEventIssues() {
+  // Add global click handler to identify potentially conflicting elements
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const path = [];
+    let current = target;
+    
+    // Build event path
+    while (current) {
+      const id = current.id ? '#' + current.id : '';
+      const classes = Array.from(current.classList).map(c => '.' + c).join('');
+      const tagName = current.tagName.toLowerCase();
+      path.push(`${tagName}${id}${classes}`);
+      
+      if (current.parentElement) {
+        current = current.parentElement;
+      } else {
+        break;
+      }
+    }
+    
+    console.log('Click event path:', path);
+  }, true);
+  
+  // Watch for pointer events on the drag handles
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'childList') {
+        const dragHandles = document.querySelectorAll('.drag-handle');
+        dragHandles.forEach((handle) => {
+          const styles = window.getComputedStyle(handle);
+          console.log('Drag handle styles:', {
+            pointerEvents: styles.pointerEvents,
+            zIndex: styles.zIndex,
+            position: styles.position,
+            cursor: styles.cursor,
+            display: styles.display,
+          });
+        });
+      }
+    });
+  });
+  
+  // Start observing when DOM is ready
+  observer.observe(document.body, { childList: true, subtree: true });
+  
+  return () => {
+    observer.disconnect();
+  };
+}
+
+// Initialize debug functions
+debugEventIssues();
+
 export default function Home() {
     // State management
     const [color, setColor] = useState('rgb(0, 0, 0)'); // Changed to black for white background
@@ -235,12 +290,29 @@ export default function Home() {
         }
     };    // Handle position change for LaTeX expressions
     const handleLatexPositionChange = (index: number, x: number, y: number) => {
-        const newExpressions = [...latexExpression];
-        newExpressions[index].position = { 
-            x: x, // Store the exact position
-            y: y  // Store the exact position
-        };
+        console.log(`Setting new position for latex ${index}: x=${x}, y=${y}`);
+        
+        // Create a deep copy to ensure React detects the change
+        const newExpressions = latexExpression.map((expr, i) => {
+            if (i === index) {
+                return {
+                    ...expr,
+                    position: { 
+                        x: x, // Store the exact position
+                        y: y  // Store the exact position
+                    }
+                };
+            }
+            return expr;
+        });
+        
+        // Force update by setting state
         setLatexExpression(newExpressions);
+        
+        // Debug check for position update
+        setTimeout(() => {
+            console.log('Updated position state:', latexExpression[index]?.position);
+        }, 0);
     };
 
     // Handle deletion of LaTeX expressions
@@ -512,11 +584,19 @@ export default function Home() {
                         }
                     } : undefined}
                     onMouseUp={selectionMode ? (e) => handleEndSelection(e) : undefined}
-                    onMouseOut={selectionMode ? (e) => handleEndSelection(e) : undefined}                />                  {/* Fixed positioned container for LaTeX output - positioned relative to the canvas */}
-                <div className="absolute top-16 left-0 w-full h-[calc(100vh-4rem)] pointer-events-none z-20" id="latex-container">
+                    onMouseOut={selectionMode ? (e) => handleEndSelection(e) : undefined}                />                {/* Fixed positioned container for LaTeX output - positioned relative to the canvas */}
+                <div 
+                  className="absolute top-16 left-0 w-full h-[calc(100vh-4rem)] z-20" 
+                  id="latex-container" 
+                  style={{ 
+                    touchAction: "none", 
+                    overflow: "visible",
+                    position: "absolute",
+                    pointerEvents: "auto"
+                  }}>
                     {latexExpression && latexExpression.map((item, index) => (
                         <LatexAnswer
-                            key={index}
+                            key={`latex-answer-${index}`}
                             item={item}
                             index={index}
                             steps={result?.steps}
@@ -525,8 +605,60 @@ export default function Home() {
                             onPositionChange={handleLatexPositionChange}
                             onDelete={handleLatexDelete}
                         />
-                    ))}
-                </div>
+                    ))}                </div>
+                
+                {/* Add a test draggable element that bypasses all the complexities for testing */}
+                {import.meta.env.DEV && (
+                  <div 
+                    id="test-drag-element"
+                    style={{
+                      position: 'absolute',
+                      top: '100px',
+                      left: '20px',
+                      width: '100px',
+                      height: '30px',
+                      backgroundColor: 'rgba(255, 0, 0, 0.4)',
+                      border: '2px solid red',
+                      borderRadius: '4px',
+                      zIndex: 9999,
+                      cursor: 'grab',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      pointerEvents: 'auto',
+                      touchAction: 'none'
+                    }}
+                    onPointerDown={(e) => {
+                      const element = e.currentTarget;
+                      const startX = e.clientX;
+                      const startY = e.clientY;
+                      const startTop = parseFloat(element.style.top);
+                      const startLeft = parseFloat(element.style.left);
+                      
+                      element.style.cursor = 'grabbing';
+                      
+                      const handleMove = (moveEvent: PointerEvent) => {
+                        const dx = moveEvent.clientX - startX;
+                        const dy = moveEvent.clientY - startY;
+                        element.style.top = `${startTop + dy}px`;
+                        element.style.left = `${startLeft + dx}px`;
+                      };
+                      
+                      const handleUp = () => {
+                        element.style.cursor = 'grab';
+                        document.removeEventListener('pointermove', handleMove);
+                        document.removeEventListener('pointerup', handleUp);
+                      };
+                      
+                      document.addEventListener('pointermove', handleMove);
+                      document.addEventListener('pointerup', handleUp);
+                    }}
+                  >
+                    TEST DRAG
+                  </div>
+                )}
             </div>
 
             <DebugOverlay selectionMode={selectionMode} />

@@ -25,27 +25,39 @@ export const useLatexRenderer = () => {
       
       // Log position for debugging
       console.log('Rendering LaTeX near selection with center:', selectionCenter);
-      console.log('Selection bounds:', selectionBounds);
-        // Calculate better position based on selection
+      console.log('Selection bounds:', selectionBounds);      // Calculate better position based on selection
       let finalPosition;
       
       if (selectionCenter && selectionBounds) {
         // Position next to the selection based on available space
         const screenWidth = window.innerWidth;
         const estimatedAnswerWidth = 250; // Rough estimate of answer width
-          // We have the bounds directly, no need to calculate dimensions
+        
+        // Calculate the available space on different sides
+        const rightSpace = screenWidth - selectionBounds.maxX;
+        const leftSpace = selectionBounds.minX;
         
         // If there's enough space to the right of the selection
-        if (selectionBounds.maxX + estimatedAnswerWidth + 30 < screenWidth) {
+        if (rightSpace >= estimatedAnswerWidth + 30) {
           // Position to the right of the equation with some padding
           finalPosition = {
             x: selectionBounds.maxX + 20, // Add padding from the equation
             y: selectionBounds.minY  // Align with the top of the selection
           };
-        } else {
-          // Not enough space on the right, place below the selection
+        } 
+        // If there's more space on the left than right
+        else if (leftSpace > rightSpace && leftSpace >= estimatedAnswerWidth + 30) {
+          // Position to the left of the selection with padding
           finalPosition = {
-            x: Math.max(10, selectionBounds.minX), // Align with the left edge of selection but at least 10px from edge
+            x: Math.max(10, selectionBounds.minX - estimatedAnswerWidth - 20),
+            y: selectionBounds.minY // Align with the top of the selection
+          };
+        }
+        // Default to below the selection
+        else {
+          // Not enough space on sides, place below the selection
+          finalPosition = {
+            x: Math.max(10, selectionCenter.x - (estimatedAnswerWidth / 2)), // Center horizontally with the selection
             y: selectionBounds.maxY + 20 // Place below with padding
           };
         }
@@ -53,6 +65,9 @@ export const useLatexRenderer = () => {
         // Make sure the position is at least 10px from edges
         finalPosition.x = Math.max(10, finalPosition.x);
         finalPosition.y = Math.max(10, finalPosition.y);
+        
+        // Ensure the answer doesn't go off-screen
+        finalPosition.x = Math.min(finalPosition.x, screenWidth - estimatedAnswerWidth - 10);
         
         console.log('Using calculated position for answer:', finalPosition);
       } else {
