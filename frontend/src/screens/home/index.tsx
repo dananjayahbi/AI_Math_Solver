@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import FormulaReference from '@/components/FormulaReference';
 import ControlPanel from '@/components/ControlPanel';
 import LatexAnswer from '@/components/LatexAnswer';
+import { DebugOverlay } from '@/components/DebugOverlay';
 import { useCanvas } from '@/hooks/useCanvas';
 import { useSelection } from '@/hooks/useSelection';
 import { useLatexRenderer } from '@/hooks/useLatexRenderer';
@@ -18,22 +19,26 @@ export default function Home() {
     const [showFormulaReference, setShowFormulaReference] = useState(false);
 
     // Use custom hooks
-    const { canvasRef, startDrawing, draw, stopDrawing, resetCanvas } = useCanvas(color);
+    const { canvasRef, startDrawing, draw, stopDrawing, resetCanvas, isDrawing } = useCanvas(color);
     
+    // Use useSelection hook
     const { 
         selectionCanvasRef, 
-        selectionPath, 
+        selectionPath,
+        setSelectionPath,
         selectionBounds, 
+        setSelectionBounds,
         selectionCenter, 
+        setSelectionCenter,
         selectionActive, 
         isPointInPath,
         setSelectionActive,
         selectionMode,
-        setSelectionMode,
-        startSelection,
-        updateSelection,
-        endSelection
+        setSelectionMode
     } = useSelection();
+    
+    // Local state for selection operations
+    const [isSelecting, setIsSelecting] = useState(false);
     
     const { 
         latexExpression, 
@@ -52,17 +57,41 @@ export default function Home() {
     // Since we're handling interactions directly, we don't need these intermediate functions anymore
 
     const toggleSelectionMode = () => {
-        setSelectionMode(prev => !prev);
+        // Log the current state before toggling
+        console.log('Current selectionMode before toggle:', selectionMode);
+        
+        // End any ongoing selection or drawing
+        setIsSelecting(false);
+        if (isDrawing) {
+            stopDrawing();
+        }
+        
+        setSelectionMode(prevMode => {
+            const newMode = !prevMode;
+            console.log('Setting selectionMode to:', newMode);
+            return newMode;
+        });
+        
+        // Reset selection state
         setSelectionActive(false);
+        setSelectionPath([]); // Clear the selection path
+        setSelectionBounds(null);
+        setSelectionCenter(null);
         
         // Clear selection canvas
         const selectionCanvas = selectionCanvasRef.current;
         if (selectionCanvas) {
+            // Make sure the canvas is properly sized
+            selectionCanvas.width = window.innerWidth;
+            selectionCanvas.height = window.innerHeight - selectionCanvas.offsetTop;
+            
             const ctx = selectionCanvas.getContext('2d');
             if (ctx) {
                 ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
             }
         }
+        
+        console.log('Mode toggled, selection canvas cleared');
     };
 
     // MathJax configuration effect
@@ -163,6 +192,31 @@ export default function Home() {
         }
     }, [reset, resetCanvas, setLatexExpression, setResult, setDictOfVars]);
 
+    // Debug effect to track selectionMode changes
+    useEffect(() => {
+        console.log('selectionMode changed:', selectionMode);
+        
+        // Check and log the z-index and pointer-events of both canvases
+        const mainCanvas = canvasRef.current;
+        const selCanvas = selectionCanvasRef.current;
+        
+        if (mainCanvas && selCanvas) {
+            console.log('Main canvas style:', {
+                zIndex: window.getComputedStyle(mainCanvas).zIndex,
+                pointerEvents: window.getComputedStyle(mainCanvas).pointerEvents
+            });
+            
+            console.log('Selection canvas style:', {
+                zIndex: window.getComputedStyle(selCanvas).zIndex,
+                pointerEvents: window.getComputedStyle(selCanvas).pointerEvents
+            });
+            
+            // Ensure the selection canvas has proper dimensions
+            selCanvas.width = window.innerWidth;
+            selCanvas.height = window.innerHeight - selCanvas.offsetTop;
+        }
+    }, [selectionMode, canvasRef, selectionCanvasRef]);
+
     // Handle the API call
     const runRoute = async () => {
         const canvas = canvasRef.current;
@@ -210,6 +264,206 @@ export default function Home() {
         stopDrawing();
     };
 
+    // Define custom selection handlers that work more reliably
+    const handleStartSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        console.log('Direct handleStartSelection called', e.clientX, e.clientY, 'Selection mode:', selectionMode);
+        
+        // Prevent default to stop any browser handling
+        e.preventDefault();
+        
+        if (!selectionMode) {
+            console.log('Not in selection mode, ignoring selection start');
+            return;
+        }
+        
+        // Get the canvas reference and context
+        const canvas = selectionCanvasRef.current;
+        if (canvas) {
+            // Calculate canvas coordinates from mouse event
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            console.log('Starting selection at', x, y);
+            
+            // Clear any previous selection
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                // Make sure the canvas is properly sized
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight - canvas.offsetTop;
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw initial point
+                ctx.beginPath();
+                ctx.arc(x, y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.7)';
+                ctx.fill();
+                ctx.strokeStyle = 'blue';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Initialize selection path
+                setSelectionPath([{ x, y }]);
+                
+                // Update state
+                setIsSelecting(true);
+                setSelectionActive(false);
+            }
+        }
+    };
+    
+    const handleUpdateSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        console.log('updateSelection called, selectionMode:', selectionMode, 'isSelecting:', isSelecting);
+        
+        // Prevent default to stop any browser handling
+        e.preventDefault();
+        
+        if (!selectionMode || !isSelecting) {
+            return;
+        }
+        
+        const canvas = selectionCanvasRef.current;
+        if (canvas && selectionPath.length > 0) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            console.log('Selection point added:', x, y);
+            
+            // Add new point to the path
+            const newPath = [...selectionPath, { x, y }];
+            setSelectionPath(newPath);
+            
+            // Draw the updated path
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw the path
+                ctx.beginPath();
+                ctx.moveTo(newPath[0].x, newPath[0].y);
+                
+                for (let i = 1; i < newPath.length; i++) {
+                    ctx.lineTo(newPath[i].x, newPath[i].y);
+                }
+                
+                ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Add a subtle fill
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
+                ctx.fill();
+                
+                // Draw points for better visualization during development
+                for (const point of newPath) {
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 123, 255, 0.7)';
+                    ctx.fill();
+                }
+            }
+        }
+    };
+    
+    const handleEndSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        console.log('endSelection called, selectionMode:', selectionMode, 'isSelecting:', isSelecting);
+        
+        // Prevent default to stop any browser handling
+        if (e) e.preventDefault();
+        
+        if (!selectionMode || !isSelecting) {
+            return;
+        }
+        
+        const canvas = selectionCanvasRef.current;
+        if (canvas && selectionPath.length > 2) {
+            console.log('Completing selection with', selectionPath.length, 'points');
+            
+            // Calculate the bounds
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                // Close the path
+                ctx.beginPath();
+                ctx.moveTo(selectionPath[0].x, selectionPath[0].y);
+                
+                for (let i = 1; i < selectionPath.length; i++) {
+                    ctx.lineTo(selectionPath[i].x, selectionPath[i].y);
+                }
+                
+                // Close the path back to the first point
+                ctx.lineTo(selectionPath[0].x, selectionPath[0].y);
+                
+                ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Fill with semi-transparent color
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
+                ctx.fill();
+                
+                // Calculate bounds
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                
+                // Find min/max coordinates
+                for (const point of selectionPath) {
+                    minX = Math.min(minX, point.x);
+                    minY = Math.min(minY, point.y);
+                    maxX = Math.max(maxX, point.x);
+                    maxY = Math.max(maxY, point.y);
+                }
+                
+                console.log('Selection bounds:', { minX, minY, maxX, maxY });
+                
+                // Set selection bounds
+                setSelectionBounds({
+                    minX, minY, maxX, maxY
+                });
+                
+                // Calculate center
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+                
+                console.log('Selection center:', { x: centerX, y: centerY });
+                
+                setSelectionCenter({ x: centerX, y: centerY });
+                
+                // Draw center indicator
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.7)';
+                ctx.fill();
+                ctx.strokeStyle = 'blue';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Add crosshair at center
+                ctx.beginPath();
+                ctx.moveTo(centerX - 10, centerY);
+                ctx.lineTo(centerX + 10, centerY);
+                ctx.moveTo(centerX, centerY - 10);
+                ctx.lineTo(centerX, centerY + 10);
+                ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Set selection as active
+                setSelectionActive(true);
+            }
+        } else {
+            console.log('Selection path too short or no canvas');
+        }
+        
+        // End selection mode
+        setIsSelecting(false);
+    };
+
     return (
         <>
             <ControlPanel 
@@ -231,20 +485,38 @@ export default function Home() {
                 <canvas
                     ref={canvasRef}
                     id='canvas'
-                    className='absolute top-16 left-0 w-full h-[calc(100vh-4rem)]'
-                    onMouseDown={handleStartDrawing}
-                    onMouseMove={handleDraw}
-                    onMouseUp={handleStopDrawing}
-                    onMouseOut={handleStopDrawing}
+                    style={{ 
+                        zIndex: selectionMode ? 0 : 1,
+                        pointerEvents: selectionMode ? 'none' : 'auto'
+                    }}
+                    className={`absolute top-16 left-0 w-full h-[calc(100vh-4rem)] ${selectionMode ? 'cursor-default' : 'cursor-pencil'}`}
+                    onMouseDown={!selectionMode ? handleStartDrawing : undefined}
+                    onMouseMove={!selectionMode ? handleDraw : undefined}
+                    onMouseUp={!selectionMode ? handleStopDrawing : undefined}
+                    onMouseOut={!selectionMode ? handleStopDrawing : undefined}
                 />
+                {/* Use a conditional to re-render the selection canvas when selectionMode changes */}
                 <canvas
+                    key={selectionMode ? 'selection-active' : 'selection-inactive'}
                     ref={selectionCanvasRef}
                     id='selectionCanvas'
-                    className={`absolute top-16 left-0 w-full h-[calc(100vh-4rem)] z-10 ${!selectionMode ? 'pointer-events-none' : ''}`}
-                    onMouseDown={selectionMode ? startSelection : undefined}
-                    onMouseMove={selectionMode ? updateSelection : undefined}
-                    onMouseUp={selectionMode ? endSelection : undefined}
-                    onMouseOut={selectionMode ? endSelection : undefined}
+                    style={{ 
+                        zIndex: selectionMode ? 5 : 0,
+                        pointerEvents: selectionMode ? 'auto' : 'none',
+                        cursor: selectionMode ? 'crosshair' : 'default'
+                    }}
+                    className={`absolute top-16 left-0 w-full h-[calc(100vh-4rem)] ${selectionMode ? 'cursor-crosshair' : ''}`}
+                    onMouseDown={selectionMode ? (e) => {
+                        console.log('Raw onMouseDown event on selection canvas');
+                        handleStartSelection(e);
+                    } : undefined}
+                    onMouseMove={selectionMode ? (e) => {
+                        if (isSelecting) {
+                            handleUpdateSelection(e);
+                        }
+                    } : undefined}
+                    onMouseUp={selectionMode ? (e) => handleEndSelection(e) : undefined}
+                    onMouseOut={selectionMode ? (e) => handleEndSelection(e) : undefined}
                 />
                 
                 {/* Fixed positioned container for LaTeX output - positioned relative to the canvas */}
@@ -263,6 +535,8 @@ export default function Home() {
                     ))}
                 </div>
             </div>
+
+            <DebugOverlay selectionMode={selectionMode} />
 
             <FormulaReference 
                 mode={mathMode}

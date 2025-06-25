@@ -97,23 +97,46 @@ export const useSelection = () => {
     return {
       bounds: { minX, minY, maxX, maxY },
       center: { x: finalCenterX, y: finalCenterY }
-    };
-  };
-
-  // Selection functions - now with free-form selection
+    };  };
+  
+  // Selection functions - now with free-form selection  
   const startSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const x = e.nativeEvent.offsetX;
-    const y = e.nativeEvent.offsetY;
+    console.log('startSelection in hook called');
+    
+    // Get coordinates either from offsetX/Y or calculate from clientX/Y
+    let x: number, y: number;
+    if (e.nativeEvent.offsetX !== undefined) {
+      x = e.nativeEvent.offsetX;
+      y = e.nativeEvent.offsetY;
+    } else {
+      const canvas = selectionCanvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        x = e.clientX - rect.left;
+        y = e.clientY - rect.top;
+      } else {
+        // Fallback
+        x = e.clientX;
+        y = e.clientY;
+      }
+    }
+    
+    console.log('Selection starting at point:', x, y);
     
     // Initialize a new path with the starting point
     setSelectionPath([{ x, y }]);
     setIsSelecting(true);
+    setSelectionActive(false); // Reset active selection while drawing a new one
     
     // Clear previous selection
     const selectionCanvas = selectionCanvasRef.current;
     if (selectionCanvas) {
       const ctx = selectionCanvas.getContext('2d');
       if (ctx) {
+        // Make sure the canvas dimensions are set correctly
+        selectionCanvas.width = window.innerWidth;
+        selectionCanvas.height = window.innerHeight - selectionCanvas.offsetTop;
+        
         ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
         
         // Start a new path
@@ -122,18 +145,45 @@ export const useSelection = () => {
         ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
         ctx.lineWidth = 2;
         ctx.setLineDash([]);
+        
+        // Draw a clear starting point
+        ctx.fillStyle = 'rgba(0, 123, 255, 0.5)';
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        console.log('Selection started and initial point drawn on canvas');
       }
     }
   };
-  
-  const updateSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isSelecting) return;
+    const updateSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isSelecting) {
+      console.log('updateSelection called, but not in selecting state');
+      return;
+    }
     
-    const x = e.nativeEvent.offsetX;
-    const y = e.nativeEvent.offsetY;
+    console.log('updateSelection in hook called', isSelecting);
+    
+    // Get coordinates either from offsetX/Y or calculate from clientX/Y
+    let x: number, y: number;
+    if (e.nativeEvent.offsetX !== undefined) {
+      x = e.nativeEvent.offsetX;
+      y = e.nativeEvent.offsetY;
+    } else {
+      const canvas = selectionCanvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        x = e.clientX - rect.left;
+        y = e.clientY - rect.top;
+      } else {
+        // Fallback
+        x = e.clientX;
+        y = e.clientY;
+      }
+    }
     
     // Add the new point to the path
-    setSelectionPath(prev => [...prev, { x, y }]);
+    const newPoint = { x, y };
+    setSelectionPath(prev => [...prev, newPoint]);
     
     // Draw the selection path
     const selectionCanvas = selectionCanvasRef.current;
@@ -144,11 +194,14 @@ export const useSelection = () => {
         ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
         
         // Draw the entire path with a smoother appearance
-        ctx.beginPath();
-        ctx.moveTo(selectionPath[0].x, selectionPath[0].y);
+        const currentPath = [...selectionPath, newPoint];
         
-        for (let i = 1; i < selectionPath.length; i++) {
-          ctx.lineTo(selectionPath[i].x, selectionPath[i].y);
+        if (currentPath.length > 0) {
+          ctx.beginPath();
+          ctx.moveTo(currentPath[0].x, currentPath[0].y);
+            for (let i = 1; i < currentPath.length; i++) {
+            ctx.lineTo(currentPath[i].x, currentPath[i].y);
+          }
         }
         
         ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
