@@ -233,14 +233,12 @@ export default function Home() {
                 isPointInPath
             );
         }
-    };
-
-    // Handle position change for LaTeX expressions
+    };    // Handle position change for LaTeX expressions
     const handleLatexPositionChange = (index: number, x: number, y: number) => {
         const newExpressions = [...latexExpression];
         newExpressions[index].position = { 
-            x: x - 40, // Subtract the offset we applied in LatexAnswer
-            y: y + 30  // Subtract the offset we applied in LatexAnswer
+            x: x, // Store the exact position
+            y: y  // Store the exact position
         };
         setLatexExpression(newExpressions);
     };
@@ -481,12 +479,11 @@ export default function Home() {
                 runRoute={runRoute}
             />
             
-            <div className="relative w-full h-[calc(100vh-4rem)]" id="canvas-container">
-                <canvas
+            <div className="relative w-full h-[calc(100vh-4rem)]" id="canvas-container">                <canvas
                     ref={canvasRef}
                     id='canvas'
                     style={{ 
-                        zIndex: selectionMode ? 0 : 1,
+                        zIndex: selectionMode ? 0 : 10,
                         pointerEvents: selectionMode ? 'none' : 'auto'
                     }}
                     className={`absolute top-16 left-0 w-full h-[calc(100vh-4rem)] ${selectionMode ? 'cursor-default' : 'cursor-pencil'}`}
@@ -495,13 +492,12 @@ export default function Home() {
                     onMouseUp={!selectionMode ? handleStopDrawing : undefined}
                     onMouseOut={!selectionMode ? handleStopDrawing : undefined}
                 />
-                {/* Use a conditional to re-render the selection canvas when selectionMode changes */}
-                <canvas
+                {/* Use a conditional to re-render the selection canvas when selectionMode changes */}                <canvas
                     key={selectionMode ? 'selection-active' : 'selection-inactive'}
                     ref={selectionCanvasRef}
                     id='selectionCanvas'
                     style={{ 
-                        zIndex: selectionMode ? 5 : 0,
+                        zIndex: selectionMode ? 15 : 0,
                         pointerEvents: selectionMode ? 'auto' : 'none',
                         cursor: selectionMode ? 'crosshair' : 'default'
                     }}
@@ -516,11 +512,8 @@ export default function Home() {
                         }
                     } : undefined}
                     onMouseUp={selectionMode ? (e) => handleEndSelection(e) : undefined}
-                    onMouseOut={selectionMode ? (e) => handleEndSelection(e) : undefined}
-                />
-                
-                {/* Fixed positioned container for LaTeX output - positioned relative to the canvas */}
-                <div className="absolute top-16 left-0 w-full h-[calc(100vh-4rem)] pointer-events-none z-20">
+                    onMouseOut={selectionMode ? (e) => handleEndSelection(e) : undefined}                />                  {/* Fixed positioned container for LaTeX output - positioned relative to the canvas */}
+                <div className="absolute top-16 left-0 w-full h-[calc(100vh-4rem)] pointer-events-none z-20" id="latex-container">
                     {latexExpression && latexExpression.map((item, index) => (
                         <LatexAnswer
                             key={index}

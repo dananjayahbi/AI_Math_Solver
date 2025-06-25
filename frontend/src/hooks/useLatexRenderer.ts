@@ -7,8 +7,7 @@ import { LatexExpressionItem, MathResult, Point, SelectionBounds } from '../type
 export const useLatexRenderer = () => {
   const [latexPosition, setLatexPosition] = useState<Point>({ x: 10, y: 200 });
   const [latexExpression, setLatexExpression] = useState<Array<LatexExpressionItem>>([]);
-  
-  // Function to render LaTeX to canvas
+    // Function to render LaTeX to canvas
   const renderLatexToCanvas = useCallback(
     (
       expression: string, 
@@ -25,28 +24,44 @@ export const useLatexRenderer = () => {
       const latex = `\\(${escapedExpr} = ${escapedAnswer}\\)`;
       
       // Log position for debugging
-      console.log('Selection center:', selectionCenter);
-      console.log('LatexPosition:', latexPosition);
-      
-      // Calculate better position based on selection
-      // If selection is available, position to the immediate right of the equation
+      console.log('Rendering LaTeX near selection with center:', selectionCenter);
+      console.log('Selection bounds:', selectionBounds);
+        // Calculate better position based on selection
       let finalPosition;
       
       if (selectionCenter && selectionBounds) {
-        // Position to the right of the equation at the vertical center
-        finalPosition = {
-          // Instead of the center, use the right edge of the selection
-          x: selectionBounds.maxX + 20, // Add some padding from the equation
-          y: selectionCenter.y // Vertically align with the center
-        };
+        // Position next to the selection based on available space
+        const screenWidth = window.innerWidth;
+        const estimatedAnswerWidth = 250; // Rough estimate of answer width
+          // We have the bounds directly, no need to calculate dimensions
         
-        console.log('Using calculated position:', finalPosition);
+        // If there's enough space to the right of the selection
+        if (selectionBounds.maxX + estimatedAnswerWidth + 30 < screenWidth) {
+          // Position to the right of the equation with some padding
+          finalPosition = {
+            x: selectionBounds.maxX + 20, // Add padding from the equation
+            y: selectionBounds.minY  // Align with the top of the selection
+          };
+        } else {
+          // Not enough space on the right, place below the selection
+          finalPosition = {
+            x: Math.max(10, selectionBounds.minX), // Align with the left edge of selection but at least 10px from edge
+            y: selectionBounds.maxY + 20 // Place below with padding
+          };
+        }
+        
+        // Make sure the position is at least 10px from edges
+        finalPosition.x = Math.max(10, finalPosition.x);
+        finalPosition.y = Math.max(10, finalPosition.y);
+        
+        console.log('Using calculated position for answer:', finalPosition);
       } else {
+        // Fallback to a default position if no selection is available
         finalPosition = latexPosition;
         console.log('Falling back to default position:', finalPosition);
       }
       
-      // Use the current center point of the selection for positioning
+      // Update the expression list with the new latex expression
       setLatexExpression(prevExpressions => [
         ...prevExpressions, 
         {

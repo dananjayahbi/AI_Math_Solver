@@ -1,13 +1,17 @@
 import Draggable from 'react-draggable';
 import { useState } from 'react';
 import StepByStepSolution from './StepByStepSolution';
-import { FormulaInfo, LatexExpressionItem } from '../types/math/types';
+import { LatexExpressionItem } from '../types/math/types';
 
 interface LatexAnswerProps {
   item: LatexExpressionItem;
   index: number;
   steps?: string[];
-  formulas?: FormulaInfo[] | null;
+  formulas?: Array<{
+    name: string;
+    formula: string;
+    explanation: string;
+  }> | null;
   showDetailedSteps: boolean;
   onPositionChange: (index: number, x: number, y: number) => void;
   onDelete: (index: number) => void;
@@ -26,38 +30,46 @@ export default function LatexAnswer({
   onDelete
 }: LatexAnswerProps) {
   const [zIndex, setZIndex] = useState(30);
-
   return (
     <Draggable
       key={index}
       defaultPosition={{
-        x: item.position.x + 40, // Position to the right of equation
-        y: item.position.y - 30  // Position above equation
+        x: item.position.x,
+        y: item.position.y
       }}
-      bounds="parent"
+      bounds="#latex-container"
       handle=".drag-handle"
-      onStart={() => {
+      scale={1}
+      onStart={(e) => {
+        e.stopPropagation();
         // Add high z-index during dragging
         const element = document.getElementById(`latex-container-${index}`);
         if (element) {
           element.classList.add('dragging');
           setZIndex(1000);
+          console.log('Drag started for answer', index);
         }
       }}
-      onStop={(_, data) => {
+      onDrag={(e) => {
+        e.stopPropagation();
+        // Log position during drag for debugging
+        console.log('Dragging answer', index);
+      }}
+      onStop={(e, data) => {
+        e.stopPropagation();
         const element = document.getElementById(`latex-container-${index}`);
         if (element) {
           element.classList.remove('dragging');
           setZIndex(30);
         }
         
-        // Update position with correct offsets
-        onPositionChange(index, data.x - 40, data.y + 30);
-      }}
-    >
+        // Update position with current position
+        console.log('Drag stopped for answer', index, 'at position', data.x, data.y);
+        onPositionChange(index, data.x, data.y);
+      }}    >
       <div 
         id={`latex-container-${index}`}
-        className="pointer-events-auto animate-fade-in relative"
+        className="pointer-events-auto animate-fade-in relative latex-answer-container"
         style={{
           backgroundColor: 'rgba(255, 255, 255, 0.97)',
           border: '2px solid rgba(59, 130, 246, 0.5)',
@@ -71,7 +83,8 @@ export default function LatexAnswer({
           cursor: 'move',
           transition: 'all 0.2s ease',
           transform: 'scale(1)',
-          pointerEvents: 'auto'
+          pointerEvents: 'auto',
+          touchAction: 'none'
         }}
       >
         <div 
@@ -110,11 +123,10 @@ export default function LatexAnswer({
           }}
           dangerouslySetInnerHTML={{ __html: item.latex }}>
         </div>
-        
-        {steps && steps.length > 0 && showDetailedSteps && (
+          {steps && steps.length > 0 && showDetailedSteps && (
           <StepByStepSolution 
             steps={steps} 
-            formulas={formulas} 
+            formulas={formulas || null} 
           />
         )}
       </div>
