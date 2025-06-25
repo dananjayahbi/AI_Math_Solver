@@ -30,23 +30,25 @@ div.react-draggable-dragging,
   cursor: grab !important;
   user-select: none !important;
   touch-action: none !important;
-  height: 24px !important;
+  height: 6px !important;
   width: 100% !important;
   position: relative;
-  background-color: rgba(59, 130, 246, 0.1) !important;
+  background: linear-gradient(to right, rgba(99, 170, 255, 0.3), rgba(56, 138, 255, 0.3)) !important;
   z-index: 2100 !important; /* Higher z-index to ensure it's clickable */
+  border-top-left-radius: 6px !important;
+  border-top-right-radius: 6px !important;
 }
 
 .drag-handle:active,
 .drag-handle:hover {
   cursor: grabbing !important;
-  background-color: rgba(59, 130, 246, 0.3) !important;
+  background: linear-gradient(to right, rgba(99, 170, 255, 0.5), rgba(56, 138, 255, 0.5)) !important;
   opacity: 1 !important;
 }
 
 .dragging-handle {
   cursor: grabbing !important;
-  background-color: rgba(59, 130, 246, 0.5) !important;
+  background: linear-gradient(to right, rgba(99, 170, 255, 0.7), rgba(56, 138, 255, 0.7)) !important;
 }
 
 /* Add styles when any element is being dragged */
@@ -80,8 +82,8 @@ body.dragging-active .drag-handle,
 
 /* Effect for dragging */
 .dragging {
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important;
-  opacity: 0.95 !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25), 0 8px 10px rgba(0, 0, 0, 0.12) !important;
+  opacity: 0.97 !important;
   transform: scale(1.02) !important;
   cursor: grabbing !important;
   z-index: 1000 !important;
@@ -107,10 +109,12 @@ body.dragging-active .drag-handle,
 }
 
 .latex-answer-container.dragging {
-  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.3), 0 10px 10px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.25), 0 10px 10px rgba(0, 0, 0, 0.15) !important;
   transform: scale(1.02) !important;
   opacity: 0.98 !important;
   z-index: 1000 !important;
+  backdrop-filter: blur(8px) !important;
+  border-color: rgba(59, 130, 246, 0.5) !important;
 }
 
 /* Clear z-index hierarchy to avoid conflicts */

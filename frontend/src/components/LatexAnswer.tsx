@@ -108,17 +108,18 @@ export default function LatexAnswer({
     // Add event listeners
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
-  };
-    return (<div 
+  };    return (<div 
         ref={nodeRef}
         id={`latex-container-${index}`}
         className={`pointer-events-auto animate-fade-in relative latex-answer-container ${isDragging ? 'dragging' : ''}`}
         style={{
-          backgroundColor: 'rgba(255, 255, 255, 0.97)',
-          border: '2px solid rgba(59, 130, 246, 0.5)',
+          backgroundColor: 'rgba(255, 255, 255, 0.98)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
           borderRadius: '8px',
-          boxShadow: isDragging ? '0 10px 25px rgba(0, 0, 0, 0.25)' : '0 4px 15px rgba(0, 0, 0, 0.2)',
-          padding: '16px 16px 12px 16px',
+          boxShadow: isDragging 
+            ? '0 12px 28px rgba(0, 0, 0, 0.25), 0 8px 10px rgba(0, 0, 0, 0.12)' 
+            : '0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(59, 130, 246, 0.08)',
+          padding: '14px 16px 12px 16px',
           minWidth: '120px',
           maxWidth: '400px',
           width: 'fit-content',
@@ -131,49 +132,58 @@ export default function LatexAnswer({
           transform: isDragging ? 'scale(1.02)' : 'scale(1)',
           pointerEvents: 'auto',
           touchAction: 'none',
-          userSelect: 'none'
-        }}>
-        <div 
-          className={`drag-handle absolute top-0 left-0 right-0 h-8 flex items-center justify-center ${isDragging ? 'dragging-handle' : ''}`}
+          userSelect: 'none',
+          backdropFilter: 'blur(4px)'
+        }}><div 
+          className={`drag-handle absolute top-0 left-0 right-0 h-6 flex items-center justify-center ${isDragging ? 'dragging-handle' : ''}`}
           style={{ 
             touchAction: 'none',
             cursor: isDragging ? 'grabbing' : 'grab',
-            background: isDragging ? 'rgba(59, 130, 246, 0.5)' : 'rgba(59, 130, 246, 0.3)',
+            background: isDragging 
+              ? 'linear-gradient(to right, rgba(99, 170, 255, 0.7), rgba(56, 138, 255, 0.7))' 
+              : 'linear-gradient(to right, rgba(99, 170, 255, 0.3), rgba(56, 138, 255, 0.3))',
             borderTopLeftRadius: '6px',
             borderTopRightRadius: '6px',
-            borderBottom: '1px dashed rgba(59, 130, 246, 0.5)',
+            borderBottom: '1px solid rgba(59, 130, 246, 0.3)',
             textAlign: 'center',
             fontSize: '10px',
-            color: 'rgba(59, 130, 246, 0.8)',
+            color: 'rgba(255, 255, 255, 0.9)',
             zIndex: 2000,
             width: '100%',
             userSelect: 'none',
-            pointerEvents: 'auto'
+            pointerEvents: 'auto',
+            boxShadow: isDragging ? 'inset 0 -2px 3px rgba(0, 0, 0, 0.1)' : 'none',
+            transition: 'background 0.2s ease'
           }}
           onPointerDown={handlePointerDown}
         >
-          <div className="flex space-x-1">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="rgba(59, 130, 246, 0.7)" stroke="none">
-              <path d="M8 6a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm8-16a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4z" />
+          <div className="flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="12" viewBox="0 0 24 12" fill="white" opacity="0.8" stroke="none">
+              <rect x="2" y="1" width="20" height="2" rx="1" />
+              <rect x="2" y="5" width="20" height="2" rx="1" />
+              <rect x="2" y="9" width="20" height="2" rx="1" />
             </svg>
           </div>
-        </div>
-        <button 
-          className="absolute -top-2 -right-2 bg-gray-200 hover:bg-gray-300 text-gray-600 w-6 h-6 flex items-center justify-center rounded-full text-sm cursor-pointer z-30 shadow-sm"
+        </div>        <button 
+          className="absolute -top-2 -right-2 bg-white hover:bg-red-50 text-gray-500 hover:text-red-500 w-6 h-6 flex items-center justify-center rounded-full text-xs cursor-pointer z-30 shadow-md border border-gray-200 transition-colors duration-200"
           onClick={(e) => {
             e.stopPropagation();
             onDelete(index);
           }}
+          aria-label="Delete answer"
         >
-          ×
-        </button>
-        <div 
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>        <div 
           className="latex-content math-output mt-6" 
           style={{
-            padding: '4px',
-            fontSize: '1.2rem',
+            padding: '8px 4px',
+            fontSize: '1.25rem',
             lineHeight: '1.5',
-            textAlign: 'center'
+            textAlign: 'center',
+            color: '#1a202c',
+            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
           }}
           dangerouslySetInnerHTML={{ __html: item.latex }}>
         </div>

@@ -596,63 +596,10 @@ export default function Home() {
                             steps={result?.steps}
                             formulas={result?.formulas_used}
                             showDetailedSteps={showDetailedSteps}
-                            onPositionChange={handleLatexPositionChange}
-                            onDelete={handleLatexDelete}
+                            onPositionChange={handleLatexPositionChange}                            onDelete={handleLatexDelete}
                         />
-                    ))}                </div>
-                
-                {/* Add a test draggable element that bypasses all the complexities for testing */}
-                {import.meta.env.DEV && (
-                  <div 
-                    id="test-drag-element"
-                    style={{
-                      position: 'absolute',
-                      top: '100px',
-                      left: '20px',
-                      width: '100px',
-                      height: '30px',
-                      backgroundColor: 'rgba(255, 0, 0, 0.4)',
-                      border: '2px solid red',
-                      borderRadius: '4px',
-                      zIndex: 9999,
-                      cursor: 'grab',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      pointerEvents: 'auto',
-                      touchAction: 'none'
-                    }}
-                    onPointerDown={(e) => {
-                      const element = e.currentTarget;
-                      const startX = e.clientX;
-                      const startY = e.clientY;
-                      const startTop = parseFloat(element.style.top);
-                      const startLeft = parseFloat(element.style.left);
-                      
-                      element.style.cursor = 'grabbing';
-                      
-                      const handleMove = (moveEvent: PointerEvent) => {
-                        const dx = moveEvent.clientX - startX;
-                        const dy = moveEvent.clientY - startY;
-                        element.style.top = `${startTop + dy}px`;
-                        element.style.left = `${startLeft + dx}px`;
-                      };
-                      
-                      const handleUp = () => {
-                        element.style.cursor = 'grab';
-                        document.removeEventListener('pointermove', handleMove);
-                        document.removeEventListener('pointerup', handleUp);
-                      };
-                      
-                      document.addEventListener('pointermove', handleMove);
-                      document.addEventListener('pointerup', handleUp);
-                    }}
-                  >
-                    TEST DRAG
-                  </div>
-                )}
+                    ))}
+                </div>
             </div>
 
             <DebugOverlay selectionMode={selectionMode} />
