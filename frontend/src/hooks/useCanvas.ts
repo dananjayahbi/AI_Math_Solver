@@ -3,7 +3,7 @@ import { useRef, useState, useEffect } from 'react';
 /**
  * Custom hook for canvas drawing functionality
  */
-export const useCanvas = (color: string, selectionMode: boolean) => {
+export const useCanvas = (color: string) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
@@ -50,14 +50,8 @@ export const useCanvas = (color: string, selectionMode: boolean) => {
         return () => window.removeEventListener('resize', handleResize);
       }
     }
-  }, [color]);
-  // Handle drawing operations
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>, startSelectionFn?: (e: React.MouseEvent<HTMLCanvasElement>) => void) => {
-    if (selectionMode && startSelectionFn) {
-      startSelectionFn(e);
-      return;
-    }
-    
+  }, [color]);  // Handle drawing operations
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
@@ -67,13 +61,7 @@ export const useCanvas = (color: string, selectionMode: boolean) => {
         setIsDrawing(true);
       }
     }
-  };
-    const draw = (e: React.MouseEvent<HTMLCanvasElement>, updateSelectionFn?: (e: React.MouseEvent<HTMLCanvasElement>) => void) => {
-    if (selectionMode && updateSelectionFn) {
-      updateSelectionFn(e);
-      return;
-    }
-    
+  };    const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) {
       return;
     }
@@ -86,13 +74,7 @@ export const useCanvas = (color: string, selectionMode: boolean) => {
         ctx.stroke();
       }
     }
-  };
-    const stopDrawing = (endSelectionFn?: () => void) => {
-    if (selectionMode && endSelectionFn) {
-      endSelectionFn();
-      return;
-    }
-    
+  };    const stopDrawing = () => {
     setIsDrawing(false);
   };
   

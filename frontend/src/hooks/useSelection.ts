@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Point, SelectionBounds } from '../types/math/types';
 
 /**
@@ -12,6 +12,25 @@ export const useSelection = () => {
   const [selectionCenter, setSelectionCenter] = useState<Point | null>(null);
   const [selectionActive, setSelectionActive] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
+  
+  // Initialize the selection canvas
+  useEffect(() => {
+    const selectionCanvas = selectionCanvasRef.current;
+    if (selectionCanvas) {
+      // Set canvas dimensions
+      selectionCanvas.width = window.innerWidth;
+      selectionCanvas.height = window.innerHeight - selectionCanvas.offsetTop;
+      
+      // Handle window resize
+      const handleResize = () => {
+        selectionCanvas.width = window.innerWidth;
+        selectionCanvas.height = window.innerHeight - selectionCanvas.offsetTop;
+      };
+      
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, []);
 
   // Function to calculate if a point is inside a polygon (free-form selection)
   const isPointInPath = (point: Point, path: Point[]): boolean => {

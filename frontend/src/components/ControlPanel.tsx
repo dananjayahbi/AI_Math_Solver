@@ -60,30 +60,25 @@ export default function ControlPanel({
         ))}
       </Group>
       
-      <div className='flex flex-col space-y-2'>
-        <div className="relative">
+      <div className='flex flex-col space-y-2'>        <div className="relative">
           <Button
             onClick={runRoute}
             className={`z-20 w-full ${
-              loading || (selectionMode && !selectionActive)
+              loading || !selectionActive
                 ? 'bg-gray-400 cursor-not-allowed opacity-75' 
                 : 'bg-blue-500 hover:bg-blue-600'
             } text-white transition-all duration-200`}
-            disabled={loading || (selectionMode && !selectionActive)}
-            title={selectionMode && !selectionActive ? "Draw a selection around a math problem first" : ""}
-          >
-            {loading ? (
+            disabled={loading || !selectionActive}
+            title={!selectionActive ? "Draw a selection around a math problem first" : ""}
+          >            {loading ? (
               <div className="flex items-center justify-center">
                 <div className="animate-spin mr-2 h-4 w-4 border-t-2 border-b-2 border-white rounded-full"></div>
                 Processing...
               </div>
             ) : (
-              selectionMode ? 
-                (selectionActive ? 'Solve Selected Area' : 'Draw Selection First') : 
-                'Solve Entire Canvas'
+              selectionActive ? 'Solve Selected Area' : 'Draw Selection First'
             )}
-          </Button>
-          {selectionMode && !selectionActive && (
+          </Button>          {!selectionActive && (
             <div className="absolute -bottom-8 left-0 right-0 text-xs font-medium text-blue-500 text-center bg-blue-50 p-1 rounded-md border border-blue-200 shadow-sm">
               Draw around an equation to enable solving
             </div>

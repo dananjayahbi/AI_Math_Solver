@@ -18,7 +18,7 @@ export default function Home() {
     const [showFormulaReference, setShowFormulaReference] = useState(false);
 
     // Use custom hooks
-    const { canvasRef, startDrawing: startCanvasDrawing, draw: drawOnCanvas, stopDrawing: stopCanvasDrawing, resetCanvas } = useCanvas(color, false);
+    const { canvasRef, startDrawing, draw, stopDrawing, resetCanvas } = useCanvas(color);
     
     const { 
         selectionCanvasRef, 
@@ -49,30 +49,7 @@ export default function Home() {
         setDictOfVars
     } = useApiIntegration();
 
-    // Handlers for canvas interactions
-    const handleStartDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (selectionMode) {
-            startSelection(e);
-        } else {
-            startCanvasDrawing(e);
-        }
-    };
-
-    const handleDraw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (selectionMode) {
-            updateSelection(e);
-        } else {
-            drawOnCanvas(e);
-        }
-    };
-
-    const handleStopDrawing = () => {
-        if (selectionMode) {
-            endSelection();
-        } else {
-            stopCanvasDrawing();
-        }
-    };
+    // Since we're handling interactions directly, we don't need these intermediate functions anymore
 
     const toggleSelectionMode = () => {
         setSelectionMode(prev => !prev);
@@ -220,6 +197,19 @@ export default function Home() {
         setLatexExpression(newExpressions);
     };
 
+    // Define the handlers for drawing operations
+    const handleStartDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        startDrawing(e);
+    };
+
+    const handleDraw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        draw(e);
+    };
+
+    const handleStopDrawing = () => {
+        stopDrawing();
+    };
+
     return (
         <>
             <ControlPanel 
@@ -250,7 +240,11 @@ export default function Home() {
                 <canvas
                     ref={selectionCanvasRef}
                     id='selectionCanvas'
-                    className='absolute top-16 left-0 w-full h-[calc(100vh-4rem)] z-10 pointer-events-none'
+                    className={`absolute top-16 left-0 w-full h-[calc(100vh-4rem)] z-10 ${!selectionMode ? 'pointer-events-none' : ''}`}
+                    onMouseDown={selectionMode ? startSelection : undefined}
+                    onMouseMove={selectionMode ? updateSelection : undefined}
+                    onMouseUp={selectionMode ? endSelection : undefined}
+                    onMouseOut={selectionMode ? endSelection : undefined}
                 />
                 
                 {/* Fixed positioned container for LaTeX output - positioned relative to the canvas */}
