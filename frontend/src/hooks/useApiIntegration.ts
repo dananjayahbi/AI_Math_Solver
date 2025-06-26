@@ -8,18 +8,17 @@ import { GeneratedResult, Point, SelectionBounds, MathResult, MathApiResponse } 
 export const useApiIntegration = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GeneratedResult>();
-  const [dictOfVars, setDictOfVars] = useState<Record<string, MathResult>>({});
-
-  // Function to handle API calls
+  const [dictOfVars, setDictOfVars] = useState<Record<string, MathResult>>({});  // Function to handle API calls
   const processMathApi = async (
     canvas: HTMLCanvasElement,
-    selectionMode: boolean,
+    _selectionMode: boolean, // Prefix with underscore to indicate it's not used
     selectionActive: boolean,
     selectionBounds: SelectionBounds | null,
     selectionCenter: Point | null,
     selectionPath: Point[],
     mathMode: string,
-    isPointInPath: (point: Point, path: Point[]) => boolean
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _isPointInPath: (point: Point, path: Point[]) => boolean
   ) => {
     // Only process if there's an active selection
     if (canvas && selectionActive) {
@@ -42,77 +41,92 @@ export const useApiIntegration = () => {
           
           // Set temp canvas size to selection size
           tempCanvas.width = width;
-          tempCanvas.height = height;
-          
-          // Create a masked version of the selection area using pixel-level masking
+          tempCanvas.height = height;          // Create a masked version of the selection area using pixel-level masking
           tempCtx!.save();
           
-          // First, draw the original image to the temp canvas
+          // Fill temp canvas with white background first (important for good OCR)
+          tempCtx!.fillStyle = 'white';
+          tempCtx!.fillRect(0, 0, width, height);
+          
+          // Then draw the original image to the temp canvas
           tempCtx!.drawImage(
             canvas,
             boundingRect.minX, boundingRect.minY, width, height,
             0, 0, width, height
           );
           
-          // Create an image data object to manipulate pixels
-          const tempImageData = tempCtx!.getImageData(0, 0, width, height);
-          const data = tempImageData.data;
+          // Log selection dimensions to help debug
+          console.log('Selection dimensions:', {
+            width,
+            height,
+            selectionBounds,
+            boundingRect,
+            originalWidth: canvas.width,
+            originalHeight: canvas.height
+          });
+            // Modified approach: Keep all pixels within the selection path, don't mask them
+          // This should fix the blank image issue by ensuring pixels are preserved
           
-          // Apply pixel-level masking using isPointInPath
-          // Use a faster approach - check every 4th pixel for large areas
-          // and every pixel near the border for precision
-          const padding = 5; // Pixels to check at full resolution near the border
+          // For now, don't perform pixel-level masking, just use the selection as-is
+          // This ensures we're sending a non-blank image for testing
+          // After testing and confirming it works, we can refine the masking approach
           
-          // Calculate the shape border area
-          const border = {
-            minX: Math.max(0, Math.floor((selectionBounds.minX - boundingRect.minX) - padding)),
-            minY: Math.max(0, Math.floor((selectionBounds.minY - boundingRect.minY) - padding)),
-            maxX: Math.min(width, Math.ceil((selectionBounds.maxX - boundingRect.minX) + padding)),
-            maxY: Math.min(height, Math.ceil((selectionBounds.maxY - boundingRect.minY) + padding))
-          };
+          // Add a more visible black border to the selection to help OCR distinguish math content
+          tempCtx!.strokeStyle = '#000000';
+          tempCtx!.lineWidth = 2;
+          tempCtx!.strokeRect(0, 0, width, height);
           
-          for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-              // Convert to original canvas coordinates
-              const origX = x + boundingRect.minX;
-              const origY = y + boundingRect.minY;
-              
-              // Skip some pixels in non-border areas for performance
-              const isInBorderArea = 
-                x >= border.minX && x <= border.maxX && 
-                y >= border.minY && y <= border.maxY;
-                
-              // Check fewer pixels in the center (every 4th) but all pixels near the border
-              if (isInBorderArea || (x % 4 === 0 && y % 4 === 0)) {
-                // Check if this pixel is inside the selection path
-                if (!isPointInPath({x: origX, y: origY}, selectionPath)) {
-                  // If not inside, make this pixel and nearby pixels transparent
-                  const pixelIndex = (y * width + x) * 4;
-                  data[pixelIndex + 3] = 0; // Set alpha to 0 (transparent)
-                  
-                  // If we're skipping pixels, also set the neighbors transparent
-                  if (!isInBorderArea) {
-                    // Make the next 3 pixels in each direction transparent too
-                    for (let ny = 0; ny < 4 && y + ny < height; ny++) {
-                      for (let nx = 0; nx < 4 && x + nx < width; nx++) {
-                        if (nx === 0 && ny === 0) continue; // Skip the pixel we already set
-                        const neighborIdx = ((y + ny) * width + (x + nx)) * 4;
-                        data[neighborIdx + 3] = 0;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
+          // Add a border for visibility (helps with OCR)
+          tempCtx!.strokeStyle = '#000000';
+          tempCtx!.lineWidth = 1;
+          tempCtx!.strokeRect(0, 0, width, height);
           
-          // Put the modified image data back to the canvas
-          tempCtx!.putImageData(tempImageData, 0, 0);
+          // Debug: Log the dimensions of the selected area
+          console.log('Selection dimensions:', { width, height });
           
           // Use the masked temp canvas for the API call
           imageData = tempCanvas.toDataURL('image/png');
           
-          // Send the API request
+          // Send the API request          // Enhanced debugging for image data
+          console.log('Sending image data (preview):', imageData.substring(0, 100) + '...');
+          console.log('Image data length:', imageData.length);
+          
+          // Debug: Check if we're getting a valid image
+          const img = new Image();
+          img.onload = () => {
+            console.log('Image loaded successfully with dimensions:', img.width, 'x', img.height);
+            
+            // Additional validation for image content
+            const debugCanvas = document.createElement('canvas');
+            const debugCtx = debugCanvas.getContext('2d');
+            debugCanvas.width = img.width;
+            debugCanvas.height = img.height;
+            
+            if (debugCtx) {
+              // Draw the image
+              debugCtx.drawImage(img, 0, 0);
+                // Check if the image has any non-white pixels
+              const imgData = debugCtx.getImageData(0, 0, debugCanvas.width, debugCanvas.height);
+              const data = imgData.data;
+              
+              let nonWhitePixels = 0;
+              const totalPixels = data.length / 4;
+              
+              for (let i = 0; i < data.length; i += 4) {
+                // If this is not a pure white pixel (allowing some tolerance)
+                if (data[i] < 250 || data[i + 1] < 250 || data[i + 2] < 250) {
+                  nonWhitePixels++;
+                }
+              }
+              
+              console.log(`Image content analysis: ${nonWhitePixels} non-white pixels out of ${totalPixels} total pixels (${(nonWhitePixels/totalPixels*100).toFixed(2)}%)`);
+            }
+          };
+          img.onerror = () => {
+            console.error('Failed to load image from data URL');
+          };
+          img.src = imageData;
+          
           const response = await axios({
             method: 'post',
             url: `${import.meta.env.VITE_API_URL}/calculate`,

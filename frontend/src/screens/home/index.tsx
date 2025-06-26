@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import FormulaReference from '@/components/FormulaReference';
 import ControlPanel from '@/components/ControlPanel';
 import LatexAnswer from '@/components/LatexAnswer';
-import { DebugOverlay } from '@/components/DebugOverlay';
 import { useCanvas } from '@/hooks/useCanvas';
 import { useSelection } from '@/hooks/useSelection';
 import { useLatexRenderer } from '@/hooks/useLatexRenderer';
@@ -10,71 +8,14 @@ import { useApiIntegration } from '@/hooks/useApiIntegration';
 // Import MathJax types for TypeScript support
 import '@/types/mathjax';
 
-// Debug function to help identify event issues
-function debugEventIssues() {
-  // Add global click handler to identify potentially conflicting elements
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    const path = [];
-    let current = target;
-    
-    // Build event path
-    while (current) {
-      const id = current.id ? '#' + current.id : '';
-      const classes = Array.from(current.classList).map(c => '.' + c).join('');
-      const tagName = current.tagName.toLowerCase();
-      path.push(`${tagName}${id}${classes}`);
-      
-      if (current.parentElement) {
-        current = current.parentElement;
-      } else {
-        break;
-      }
-    }
-    
-    console.log('Click event path:', path);
-  }, true);
-  
-  // Watch for pointer events on the drag handles
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'childList') {
-        const dragHandles = document.querySelectorAll('.drag-handle');
-        dragHandles.forEach((handle) => {
-          const styles = window.getComputedStyle(handle);
-          console.log('Drag handle styles:', {
-            pointerEvents: styles.pointerEvents,
-            zIndex: styles.zIndex,
-            position: styles.position,
-            cursor: styles.cursor,
-            display: styles.display,
-          });
-        });
-      }
-    });
-  });
-  
-  // Start observing when DOM is ready
-  observer.observe(document.body, { childList: true, subtree: true });
-  
-  return () => {
-    observer.disconnect();
-  };
-}
-
-// Initialize debug functions
-debugEventIssues();
-
 export default function Home() {
     // State management
     const [color, setColor] = useState('rgb(0, 0, 0)'); // Changed to black for white background
     const [reset, setReset] = useState(false);
     const [mathMode, setMathMode] = useState('basic');
     const [showDetailedSteps, setShowDetailedSteps] = useState(false);
-    const [showFormulaReference, setShowFormulaReference] = useState(false);
-
-    // Use custom hooks
-    const { canvasRef, startDrawing, draw, stopDrawing, resetCanvas, isDrawing } = useCanvas(color);
+    const [enableEraser, setEnableEraser] = useState(false);    // Use custom hooks
+    const { canvasRef, startDrawing, draw, stopDrawing, resetCanvas, isDrawing } = useCanvas(color, enableEraser);
     
     // Use useSelection hook
     const { 
@@ -270,9 +211,7 @@ export default function Home() {
             selCanvas.width = window.innerWidth;
             selCanvas.height = window.innerHeight - selCanvas.offsetTop;
         }
-    }, [selectionMode, canvasRef, selectionCanvasRef]);
-
-    // Handle the API call
+    }, [selectionMode, canvasRef, selectionCanvasRef]);    // Handle the API call
     const runRoute = async () => {
         const canvas = canvasRef.current;
         
@@ -285,10 +224,10 @@ export default function Home() {
                 selectionCenter,
                 selectionPath,
                 mathMode,
-                isPointInPath
+                isPointInPath  // We're still passing the function, but it won't be used internally
             );
         }
-    };    // Handle position change for LaTeX expressions
+    };// Handle position change for LaTeX expressions
     const handleLatexPositionChange = (index: number, x: number, y: number) => {
         console.log(`Setting new position for latex ${index}: x=${x}, y=${y}`);
         
@@ -526,6 +465,15 @@ export default function Home() {
         
         // End selection mode
         setIsSelecting(false);
+    };    // Toggle eraser mode
+    const toggleEraser = () => {
+        if (selectionMode) return; // Don't allow eraser in selection mode
+        
+        // Log for debugging
+        console.log('Toggling eraser from', enableEraser, 'to', !enableEraser);
+        
+        // Toggle eraser state without resetting the canvas
+        setEnableEraser(prev => !prev);
     };
 
     return (
@@ -537,12 +485,14 @@ export default function Home() {
                 setMathMode={setMathMode}
                 showDetailedSteps={showDetailedSteps}
                 setShowDetailedSteps={setShowDetailedSteps}
-                setShowFormulaReference={setShowFormulaReference}
                 color={color}
                 setColor={setColor}
                 loading={loading}
                 selectionActive={selectionActive}
                 runRoute={runRoute}
+                resetCanvas={resetCanvas}
+                enableEraser={enableEraser}
+                toggleEraser={toggleEraser}
             />
             
             <div className="relative w-full h-[calc(100vh-4rem)]" id="canvas-container">                <canvas
@@ -552,7 +502,13 @@ export default function Home() {
                         zIndex: selectionMode ? 0 : 10,
                         pointerEvents: selectionMode ? 'none' : 'auto'
                     }}
-                    className={`absolute top-16 left-0 w-full h-[calc(100vh-4rem)] ${selectionMode ? 'cursor-default' : 'cursor-pencil'}`}
+                    className={`absolute top-16 left-0 w-full h-[calc(100vh-4rem)] ${
+                        selectionMode 
+                          ? 'cursor-default' 
+                          : enableEraser 
+                            ? 'cursor-eraser' 
+                            : 'cursor-pencil'
+                    }`}
                     onMouseDown={!selectionMode ? handleStartDrawing : undefined}
                     onMouseMove={!selectionMode ? handleDraw : undefined}
                     onMouseUp={!selectionMode ? handleStopDrawing : undefined}
@@ -598,17 +554,8 @@ export default function Home() {
                             showDetailedSteps={showDetailedSteps}
                             onPositionChange={handleLatexPositionChange}                            onDelete={handleLatexDelete}
                         />
-                    ))}
-                </div>
+                    ))}                </div>
             </div>
-
-            <DebugOverlay selectionMode={selectionMode} />
-
-            <FormulaReference 
-                mode={mathMode}
-                isVisible={showFormulaReference}
-                onClose={() => setShowFormulaReference(false)}
-            />
         </>
     );
 }
