@@ -1,87 +1,141 @@
-import { ColorSwatch, Group } from '@mantine/core';
-import { Button } from '@/components/ui/button';
-import { useEffect, useRef, useState, useCallback } from 'react';
-import axios from 'axios';
-import Draggable from 'react-draggable';
-import { SWATCHES } from '@/constants';
-import ModeSelector from '@/components/ModeSelector';
-import FormulaReference from '@/components/FormulaReference';
-import StepByStepSolution from '@/components/StepByStepSolution';
+import { useState, useEffect } from 'react';
+import ControlPanel from '@/components/ControlPanel';
+import LatexAnswer from '@/components/LatexAnswer';
+import { useCanvas } from '@/hooks/useCanvas';
+import { useSelection } from '@/hooks/useSelection';
+import { useLatexRenderer } from '@/hooks/useLatexRenderer';
+import { useApiIntegration } from '@/hooks/useApiIntegration';
 // Import MathJax types for TypeScript support
 import '@/types/mathjax';
-// import {LazyBrush} from 'lazy-brush';
-
-interface FormulaInfo {
-  name: string;
-  formula: string;
-  explanation: string;
-}
-
-// Define a type that can represent all possible result types
-type MathResult = string | number | boolean | null;
-
-interface GeneratedResult {
-    expression: string;
-    answer: MathResult; // Using our custom type instead of any
-    steps?: string[];
-    formulas_used?: FormulaInfo[];
-}
-
-interface Response {
-    expr: string;
-    result: MathResult; // Using our custom type instead of any
-    assign: boolean;
-    steps?: string[];
-    formulas_used?: FormulaInfo[];
-}
 
 export default function Home() {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
-    const [isDrawing, setIsDrawing] = useState(false);
-    const [isSelecting, setIsSelecting] = useState(false);
-    const [selectionStart, setSelectionStart] = useState({ x: 0, y: 0 });
-    const [selectionEnd, setSelectionEnd] = useState({ x: 0, y: 0 });
-    const [selectionActive, setSelectionActive] = useState(false);
-    const [selectionMode, setSelectionMode] = useState(false);
+    // State management
     const [color, setColor] = useState('rgb(0, 0, 0)'); // Changed to black for white background
     const [reset, setReset] = useState(false);
-    const [dictOfVars, setDictOfVars] = useState({});
-    const [result, setResult] = useState<GeneratedResult>();
     const [mathMode, setMathMode] = useState('basic');
     const [showDetailedSteps, setShowDetailedSteps] = useState(false);
-    const [showFormulaReference, setShowFormulaReference] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [latexPosition, setLatexPosition] = useState({ x: 10, y: 200 });
-    const [latexExpression, setLatexExpression] = useState<Array<string>>([]);
-
-    // const lazyBrush = new LazyBrush({
-    //     radius: 10,
-    //     enabled: true,
-    //     initialPoint: { x: 0, y: 0 },
-    // });
+    const [enableEraser, setEnableEraser] = useState(false);    // Use custom hooks
+    const { canvasRef, startDrawing, draw, stopDrawing, resetCanvas, isDrawing } = useCanvas(color, enableEraser);
     
-    const renderLatexToCanvas = useCallback((expression: string, answer: MathResult) => {
-        // Format the LaTeX with proper sizing and escaping
-        const escapedExpr = expression.replace(/\\/g, '\\\\');
-        // Ensure answer is a string before calling replace
-        const answerStr = String(answer);
-        const escapedAnswer = answerStr.replace(/\\/g, '\\\\');
-        // Use proper LaTeX formatting - with correct escaping for MathJax
-        const latex = `\\(${escapedExpr} = ${escapedAnswer}\\)`;
-        
-        setLatexExpression(prevExpressions => [...prevExpressions, latex]);
+    // Use useSelection hook
+    const { 
+        selectionCanvasRef, 
+        selectionPath,
+        setSelectionPath,
+        selectionBounds, 
+        setSelectionBounds,
+        selectionCenter, 
+        setSelectionCenter,
+        selectionActive, 
+        isPointInPath,
+        setSelectionActive,
+        selectionMode,
+        setSelectionMode
+    } = useSelection();
+    
+    // Local state for selection operations
+    const [isSelecting, setIsSelecting] = useState(false);
+    
+    const { 
+        latexExpression, 
+        renderLatexToCanvas, 
+        setLatexExpression 
+    } = useLatexRenderer();
+    
+    const {
+        loading,
+        result,
+        processMathApi,
+        setResult,
+        setDictOfVars
+    } = useApiIntegration();
 
-        // Clear the main canvas
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
+    // Since we're handling interactions directly, we don't need these intermediate functions anymore
+
+    const toggleSelectionMode = () => {
+        // Log the current state before toggling
+        console.log('Current selectionMode before toggle:', selectionMode);
+        
+        // End any ongoing selection or drawing
+        setIsSelecting(false);
+        if (isDrawing) {
+            stopDrawing();
+        }
+        
+        setSelectionMode(prevMode => {
+            const newMode = !prevMode;
+            console.log('Setting selectionMode to:', newMode);
+            return newMode;
+        });
+        
+        // Reset selection state
+        setSelectionActive(false);
+        setSelectionPath([]); // Clear the selection path
+        setSelectionBounds(null);
+        setSelectionCenter(null);
+        
+        // Clear selection canvas
+        const selectionCanvas = selectionCanvasRef.current;
+        if (selectionCanvas) {
+            // Make sure the canvas is properly sized
+            selectionCanvas.width = window.innerWidth;
+            selectionCanvas.height = window.innerHeight - selectionCanvas.offsetTop;
+            
+            const ctx = selectionCanvas.getContext('2d');
             if (ctx) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
             }
         }
+        
+        console.log('Mode toggled, selection canvas cleared');
+    };
+
+    // MathJax configuration effect
+    useEffect(() => {
+        // MathJax is already configured in index.html
+        // Additional runtime configuration to ensure UI elements are disabled
+        if (window.MathJax) {
+            // Force disable only MathJax UI control elements after rendering
+            setTimeout(() => {
+                // Target only UI controls but preserve the actual math content
+                document.querySelectorAll('mjx-container svg').forEach(svg => {
+                    // Find elements with data-name="annotations" (the scrolling control)
+                    const uiControls = svg.querySelectorAll('g[data-name="annotations"]');
+                    uiControls.forEach(control => {
+                        if (control.parentNode) {
+                            control.parentNode.removeChild(control);
+                        }
+                    });
+                });
+            }, 500);
+        }
+
+        // Add custom styles for dragging functionality
+        const styleEl = document.createElement('style');
+        styleEl.innerHTML = `
+            .dragging {
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+                opacity: 0.9 !important;
+                transform: scale(1.02) !important;
+                z-index: 50 !important;
+            }
+            .latex-answer-container:hover {
+                background-color: rgba(255, 255, 255, 0.98) !important;
+                transform: translateY(-2px);
+                box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18) !important;
+            }
+        `;
+        document.head.appendChild(styleEl);
+        
+        return () => {
+            // Cleanup
+            if (styleEl.parentNode) {
+                styleEl.parentNode.removeChild(styleEl);
+            }
+        };
     }, []);
 
+    // Effect to typeset LaTeX when it changes
     useEffect(() => {
         if (latexExpression.length > 0) {
             // For MathJax 3.x - wait for it to be loaded
@@ -109,12 +163,21 @@ export default function Home() {
         }
     }, [latexExpression]);
 
+    // Effect to render LaTeX when result changes
     useEffect(() => {
         if (result) {
-            renderLatexToCanvas(result.expression, result.answer);
+            // Clear existing answers before rendering a new one
+            setLatexExpression([]);
+            renderLatexToCanvas(
+                result.expression, 
+                result.answer,
+                selectionCenter,
+                selectionBounds
+            );
         }
-    }, [result, renderLatexToCanvas]);
+    }, [result, renderLatexToCanvas, selectionCenter, selectionBounds, setLatexExpression]);
 
+    // Effect to reset the canvas when reset is true
     useEffect(() => {
         if (reset) {
             resetCanvas();
@@ -123,420 +186,376 @@ export default function Home() {
             setDictOfVars({});
             setReset(false);
         }
-    }, [reset]);
+    }, [reset, resetCanvas, setLatexExpression, setResult, setDictOfVars]);
 
+    // Debug effect to track selectionMode changes
     useEffect(() => {
-        const canvas = canvasRef.current;
-        const selectionCanvas = selectionCanvasRef.current;
-    
-        if (canvas && selectionCanvas) {
-            const ctx = canvas.getContext('2d');
-            const selectionCtx = selectionCanvas.getContext('2d');
-            if (ctx && selectionCtx) {
-                // Set canvas dimensions
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight - canvas.offsetTop;
-                selectionCanvas.width = window.innerWidth;
-                selectionCanvas.height = window.innerHeight - canvas.offsetTop;
-                
-                // Configure canvas for drawing
-                ctx.lineCap = 'round';
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = color; // Use current selected color
-                
-                // Set the drawing canvas to white background for light theme
-                ctx.fillStyle = 'white';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // Add resize handler to maintain canvas state on window resize
-                const handleResize = () => {
-                    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    canvas.width = window.innerWidth;
-                    canvas.height = window.innerHeight - canvas.offsetTop;
-                    selectionCanvas.width = window.innerWidth;
-                    selectionCanvas.height = window.innerHeight - canvas.offsetTop;
-                    
-                    // Restore white background
-                    ctx.fillStyle = 'white';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    
-                    // Restore drawing
-                    ctx.putImageData(imgData, 0, 0);
-                    
-                    // Restore canvas settings
-                    ctx.lineCap = 'round';
-                    ctx.lineWidth = 3;
-                    ctx.strokeStyle = color;
-                };
-                
-                window.addEventListener('resize', handleResize);
-                return () => window.removeEventListener('resize', handleResize);
-            }
-        }
-    }, [color]); // Added color to the dependency array
-
-    // MathJax configuration effect
-    useEffect(() => {
-        // MathJax is already configured in index.html
-        // Additional runtime configuration to ensure UI elements are disabled
-        if (window.MathJax) {
-            // Force disable only MathJax UI control elements after rendering
-            setTimeout(() => {
-                // Target only UI controls but preserve the actual math content
-                document.querySelectorAll('mjx-container svg').forEach(svg => {
-                    // Find elements with data-name="annotations" (the scrolling control)
-                    const uiControls = svg.querySelectorAll('g[data-name="annotations"]');
-                    uiControls.forEach(control => {
-                        if (control.parentNode) {
-                            control.parentNode.removeChild(control);
-                        }
-                    });
-                });
-            }, 500);
-        }
+        console.log('selectionMode changed:', selectionMode);
         
-        return () => {
-            // Cleanup if needed
-        };
-    }, []);
-
-    const resetCanvas = () => {
-        const canvas = canvasRef.current;
-        const selectionCanvas = selectionCanvasRef.current;
+        // Check and log the z-index and pointer-events of both canvases
+        const mainCanvas = canvasRef.current;
+        const selCanvas = selectionCanvasRef.current;
         
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.fillStyle = 'white'; // For light theme
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
-        }
-        
-        if (selectionCanvas) {
-            const ctx = selectionCanvas.getContext('2d');
-            if (ctx) {
-                ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
-            }
-        }
-        
-        // Reset selection state
-        setSelectionActive(false);
-        setSelectionMode(false);
-    };
-
-    const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (selectionMode) {
-            startSelection(e);
-            return;
-        }
-        
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.beginPath();
-                ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-                setIsDrawing(true);
-            }
-        }
-    };
-    
-    const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (selectionMode) {
-            updateSelection(e);
-            return;
-        }
-        
-        if (!isDrawing) {
-            return;
-        }
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.strokeStyle = color;
-                ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-                ctx.stroke();
-            }
-        }
-    };
-    
-    const stopDrawing = () => {
-        if (selectionMode) {
-            endSelection();
-            return;
-        }
-        
-        setIsDrawing(false);
-    };
-    
-    // Selection functions
-    const startSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        const x = e.nativeEvent.offsetX;
-        const y = e.nativeEvent.offsetY;
-        
-        setSelectionStart({ x, y });
-        setSelectionEnd({ x, y });
-        setIsSelecting(true);
-        
-        // Clear previous selection
-        const selectionCanvas = selectionCanvasRef.current;
-        if (selectionCanvas) {
-            const ctx = selectionCanvas.getContext('2d');
-            if (ctx) {
-                ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
-            }
-        }
-    };
-    
-    const updateSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (!isSelecting) return;
-        
-        const x = e.nativeEvent.offsetX;
-        const y = e.nativeEvent.offsetY;
-        
-        setSelectionEnd({ x, y });
-        
-        // Draw selection rectangle
-        const selectionCanvas = selectionCanvasRef.current;
-        if (selectionCanvas) {
-            const ctx = selectionCanvas.getContext('2d');
-            if (ctx) {
-                ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
-                ctx.strokeStyle = 'rgba(0, 123, 255, 0.5)';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([5, 5]);
-                
-                const width = x - selectionStart.x;
-                const height = y - selectionStart.y;
-                
-                ctx.strokeRect(selectionStart.x, selectionStart.y, width, height);
-                ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
-                ctx.fillRect(selectionStart.x, selectionStart.y, width, height);
-            }
-        }
-    };
-    
-    const endSelection = () => {
-        setIsSelecting(false);
-        setSelectionActive(true);
-    };
-    
-    const toggleSelectionMode = () => {
-        setSelectionMode(prev => !prev);
-        if (!selectionMode) {
-            setSelectionActive(false);
+        if (mainCanvas && selCanvas) {
+            console.log('Main canvas style:', {
+                zIndex: window.getComputedStyle(mainCanvas).zIndex,
+                pointerEvents: window.getComputedStyle(mainCanvas).pointerEvents
+            });
             
-            // Clear selection canvas when entering selection mode
-            const selectionCanvas = selectionCanvasRef.current;
-            if (selectionCanvas) {
-                const ctx = selectionCanvas.getContext('2d');
-                if (ctx) {
-                    ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
-                }
-            }
+            console.log('Selection canvas style:', {
+                zIndex: window.getComputedStyle(selCanvas).zIndex,
+                pointerEvents: window.getComputedStyle(selCanvas).pointerEvents
+            });
+            
+            // Ensure the selection canvas has proper dimensions
+            selCanvas.width = window.innerWidth;
+            selCanvas.height = window.innerHeight - selCanvas.offsetTop;
         }
-    };  
-
+    }, [selectionMode, canvasRef, selectionCanvasRef]);    // Handle the API call
     const runRoute = async () => {
         const canvas = canvasRef.current;
-    
+        
         if (canvas) {
-            try {
-                setLoading(true);
-                
-                // Handle selected area if selection is active
-                let imageData;
-                let boundingRect = {
-                    minX: 0,
-                    minY: 0,
-                    maxX: canvas.width,
-                    maxY: canvas.height
-                };
-
-                if (selectionActive && selectionMode) {
-                    // Create a temporary canvas for the selected area
-                    const tempCanvas = document.createElement('canvas');
-                    const tempCtx = tempCanvas.getContext('2d');
-                    
-                    // Calculate selection bounds (ensure start < end)
-                    const startX = Math.min(selectionStart.x, selectionEnd.x);
-                    const startY = Math.min(selectionStart.y, selectionEnd.y);
-                    const width = Math.abs(selectionEnd.x - selectionStart.x);
-                    const height = Math.abs(selectionEnd.y - selectionStart.y);
-                    
-                    // Set temp canvas size to selection size
-                    tempCanvas.width = width;
-                    tempCanvas.height = height;
-                    
-                    // Copy selected region to temp canvas
-                    tempCtx!.drawImage(
-                        canvas,
-                        startX, startY, width, height,
-                        0, 0, width, height
-                    );
-                    
-                    // Use the temp canvas for the API call
-                    imageData = tempCanvas.toDataURL('image/png');
-                    
-                    // Update bounding rect for position calculation
-                    boundingRect = {
-                        minX: startX,
-                        minY: startY,
-                        maxX: startX + width,
-                        maxY: startY + height
+            await processMathApi(
+                canvas,
+                selectionMode,
+                selectionActive,
+                selectionBounds,
+                selectionCenter,
+                selectionPath,
+                mathMode,
+                isPointInPath  // We're still passing the function, but it won't be used internally
+            );
+        }
+    };// Handle position change for LaTeX expressions
+    const handleLatexPositionChange = (index: number, x: number, y: number) => {
+        console.log(`Setting new position for latex ${index}: x=${x}, y=${y}`);
+        
+        // Use functional update to avoid stale state issues
+        setLatexExpression(prevExpressions => {
+            return prevExpressions.map((expr, i) => {
+                if (i === index) {
+                    return {
+                        ...expr,
+                        position: { 
+                            x, // Store the exact position
+                            y  // Store the exact position
+                        }
                     };
-                } else {
-                    // Use the entire canvas
-                    imageData = canvas.toDataURL('image/png');
                 }
-                
-                const response = await axios({
-                    method: 'post',
-                    url: `${import.meta.env.VITE_API_URL}/calculate`,
-                    data: {
-                        image: imageData,
-                        dict_of_vars: dictOfVars,
-                        mode: mathMode,
-                        detailed_steps: showDetailedSteps
-                    }
-                });
+                return expr;
+            });
+        });
+    };
 
-                const resp = await response.data;
-                console.log('Response', resp);
-                resp.data.forEach((data: Response) => {
-                    if (data.assign === true) {
-                        setDictOfVars({
-                            ...dictOfVars,
-                            [data.expr]: data.result
-                        });
-                    }
-                });
-                
-                // Calculate positioning based on the bounding rect (either selection or whole canvas)
-                const centerX = (boundingRect.minX + boundingRect.maxX) / 2;
-                const centerY = (boundingRect.minY + boundingRect.maxY) / 2;
+    // Handle deletion of LaTeX expressions
+    const handleLatexDelete = (index: number) => {
+        const newExpressions = latexExpression.filter((_, i) => i !== index);
+        setLatexExpression(newExpressions);
+    };
 
-                setLatexPosition({ x: centerX, y: centerY });
-                resp.data.forEach((data: Response) => {
-                    setTimeout(() => {
-                        setResult({
-                            expression: data.expr,
-                            answer: data.result,
-                            steps: data.steps,
-                            formulas_used: data.formulas_used
-                        });
-                    }, 1000);
-                });
-            } catch (error) {
-                console.error('Error in API call:', error);
-                // You could add user-friendly error handling here
-            } finally {
-                setLoading(false);
+    // Define the handlers for drawing operations
+    const handleStartDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        startDrawing(e);
+    };
+
+    const handleDraw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        draw(e);
+    };
+
+    const handleStopDrawing = () => {
+        stopDrawing();
+    };
+
+    // Define custom selection handlers that work more reliably
+    const handleStartSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        console.log('Direct handleStartSelection called', e.clientX, e.clientY, 'Selection mode:', selectionMode);
+        
+        // Prevent default to stop any browser handling
+        e.preventDefault();
+        
+        if (!selectionMode) {
+            console.log('Not in selection mode, ignoring selection start');
+            return;
+        }
+        
+        // Get the canvas reference and context
+        const canvas = selectionCanvasRef.current;
+        if (canvas) {
+            // Calculate canvas coordinates from mouse event
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            console.log('Starting selection at', x, y);
+            
+            // Clear any previous selection
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                // Make sure the canvas is properly sized
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight - canvas.offsetTop;
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw initial point
+                ctx.beginPath();
+                ctx.arc(x, y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.7)';
+                ctx.fill();
+                ctx.strokeStyle = 'blue';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Initialize selection path
+                setSelectionPath([{ x, y }]);
+                
+                // Update state
+                setIsSelecting(true);
+                setSelectionActive(false);
             }
         }
+    };
+    
+    const handleUpdateSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        console.log('updateSelection called, selectionMode:', selectionMode, 'isSelecting:', isSelecting);
+        
+        // Prevent default to stop any browser handling
+        e.preventDefault();
+        
+        if (!selectionMode || !isSelecting) {
+            return;
+        }
+        
+        const canvas = selectionCanvasRef.current;
+        if (canvas && selectionPath.length > 0) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            console.log('Selection point added:', x, y);
+            
+            // Add new point to the path
+            const newPath = [...selectionPath, { x, y }];
+            setSelectionPath(newPath);
+            
+            // Draw the updated path
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw the path
+                ctx.beginPath();
+                ctx.moveTo(newPath[0].x, newPath[0].y);
+                
+                for (let i = 1; i < newPath.length; i++) {
+                    ctx.lineTo(newPath[i].x, newPath[i].y);
+                }
+                
+                ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Add a subtle fill
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
+                ctx.fill();
+                
+                // Draw points for better visualization during development
+                for (const point of newPath) {
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 123, 255, 0.7)';
+                    ctx.fill();
+                }
+            }
+        }
+    };
+    
+    const handleEndSelection = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        console.log('endSelection called, selectionMode:', selectionMode, 'isSelecting:', isSelecting);
+        
+        // Prevent default to stop any browser handling
+        if (e) e.preventDefault();
+        
+        if (!selectionMode || !isSelecting) {
+            return;
+        }
+        
+        const canvas = selectionCanvasRef.current;
+        if (canvas && selectionPath.length > 2) {
+            console.log('Completing selection with', selectionPath.length, 'points');
+            
+            // Calculate the bounds
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                // Close the path
+                ctx.beginPath();
+                ctx.moveTo(selectionPath[0].x, selectionPath[0].y);
+                
+                for (let i = 1; i < selectionPath.length; i++) {
+                    ctx.lineTo(selectionPath[i].x, selectionPath[i].y);
+                }
+                
+                // Close the path back to the first point
+                ctx.lineTo(selectionPath[0].x, selectionPath[0].y);
+                
+                ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Fill with semi-transparent color
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
+                ctx.fill();
+                
+                // Calculate bounds
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                
+                // Find min/max coordinates
+                for (const point of selectionPath) {
+                    minX = Math.min(minX, point.x);
+                    minY = Math.min(minY, point.y);
+                    maxX = Math.max(maxX, point.x);
+                    maxY = Math.max(maxY, point.y);
+                }
+                
+                console.log('Selection bounds:', { minX, minY, maxX, maxY });
+                
+                // Set selection bounds
+                setSelectionBounds({
+                    minX, minY, maxX, maxY
+                });
+                
+                // Calculate center
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+                
+                console.log('Selection center:', { x: centerX, y: centerY });
+                
+                setSelectionCenter({ x: centerX, y: centerY });
+                
+                // Draw center indicator
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 123, 255, 0.7)';
+                ctx.fill();
+                ctx.strokeStyle = 'blue';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Add crosshair at center
+                ctx.beginPath();
+                ctx.moveTo(centerX - 10, centerY);
+                ctx.lineTo(centerX + 10, centerY);
+                ctx.moveTo(centerX, centerY - 10);
+                ctx.lineTo(centerX, centerY + 10);
+                ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Set selection as active
+                setSelectionActive(true);
+            }
+        } else {
+            console.log('Selection path too short or no canvas');
+        }
+        
+        // End selection mode
+        setIsSelecting(false);
+    };    // Toggle eraser mode
+    const toggleEraser = () => {
+        if (selectionMode) return; // Don't allow eraser in selection mode
+        
+        // Log for debugging
+        console.log('Toggling eraser from', enableEraser, 'to', !enableEraser);
+        
+        // Toggle eraser state without resetting the canvas
+        setEnableEraser(prev => !prev);
     };
 
     return (
         <>
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-2 p-4 bg-white border-b border-gray-200 shadow-sm'>
-                <div className='flex flex-col space-y-2'>
-                    <Button
-                        onClick={() => setReset(true)}
-                        className='z-20 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300'
-                        variant='default' 
-                    >
-                        Reset
-                    </Button>
-                    
-                    <Button
-                        onClick={toggleSelectionMode}
-                        className={`z-20 ${selectionMode ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300'}`}
-                        variant='default' 
-                    >
-                        {selectionMode ? 'Selection Mode: ON' : 'Selection Mode: OFF'}
-                    </Button>
-                    
-                    <ModeSelector
-                        selectedMode={mathMode}
-                        onModeChange={setMathMode}
-                        showDetailedSteps={showDetailedSteps}
-                        onToggleDetailedSteps={() => setShowDetailedSteps(prev => !prev)}
-                    />
-                </div>
-
-                <Group className='z-20'>
-                    {SWATCHES.map((swatch) => (
-                        <ColorSwatch key={swatch} color={swatch} onClick={() => setColor(swatch)} />
-                    ))}
-                </Group>
-                
-                <div className='flex flex-col space-y-2'>
-                    <Button
-                        onClick={runRoute}
-                        className='z-20 bg-blue-500 hover:bg-blue-600 text-white'
-                        variant='default'
-                        disabled={loading}
-                    >
-                        {loading ? (
-                            <div className="flex items-center">
-                                <div className="animate-spin mr-2 h-4 w-4 border-t-2 border-b-2 border-white rounded-full"></div>
-                                Processing...
-                            </div>
-                        ) : 'Solve'}
-                    </Button>
-                    
-                    <Button
-                        onClick={() => setShowFormulaReference(true)}
-                        className='z-20 bg-gray-700 hover:bg-gray-800 text-white'
-                        variant='default'
-                    >
-                        Formula Reference
-                    </Button>
-                </div>
-            </div>
-
-            <div className="relative w-full h-[calc(100vh-4rem)]">
-                <canvas
+            <ControlPanel 
+                selectionMode={selectionMode}
+                toggleSelectionMode={toggleSelectionMode}
+                mathMode={mathMode}
+                setMathMode={setMathMode}
+                showDetailedSteps={showDetailedSteps}
+                setShowDetailedSteps={setShowDetailedSteps}
+                color={color}
+                setColor={setColor}
+                loading={loading}
+                selectionActive={selectionActive}
+                runRoute={runRoute}
+                resetCanvas={resetCanvas}
+                enableEraser={enableEraser}
+                toggleEraser={toggleEraser}
+            />
+            
+            <div className="relative w-full h-[calc(100vh-4rem)]" id="canvas-container">                <canvas
                     ref={canvasRef}
                     id='canvas'
-                    className='absolute top-16 left-0 w-full h-[calc(100vh-4rem)]'
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseOut={stopDrawing}
+                    style={{ 
+                        zIndex: selectionMode ? 0 : 10,
+                        pointerEvents: selectionMode ? 'none' : 'auto'
+                    }}
+                    className={`absolute top-16 left-0 w-full h-[calc(100vh-4rem)] ${
+                        selectionMode 
+                          ? 'cursor-default' 
+                          : enableEraser 
+                            ? 'cursor-eraser' 
+                            : 'cursor-pencil'
+                    }`}
+                    onMouseDown={!selectionMode ? handleStartDrawing : undefined}
+                    onMouseMove={!selectionMode ? handleDraw : undefined}
+                    onMouseUp={!selectionMode ? handleStopDrawing : undefined}
+                    onMouseOut={!selectionMode ? handleStopDrawing : undefined}
                 />
-                <canvas
+                {/* Use a conditional to re-render the selection canvas when selectionMode changes */}                <canvas
+                    key={selectionMode ? 'selection-active' : 'selection-inactive'}
                     ref={selectionCanvasRef}
                     id='selectionCanvas'
-                    className='absolute top-16 left-0 w-full h-[calc(100vh-4rem)] z-10 pointer-events-none'
-                />
+                    style={{ 
+                        zIndex: selectionMode ? 15 : 0,
+                        pointerEvents: selectionMode ? 'auto' : 'none',
+                        cursor: selectionMode ? 'crosshair' : 'default'
+                    }}
+                    className={`absolute top-16 left-0 w-full h-[calc(100vh-4rem)] ${selectionMode ? 'cursor-crosshair' : ''}`}
+                    onMouseDown={selectionMode ? (e) => {
+                        console.log('Raw onMouseDown event on selection canvas');
+                        handleStartSelection(e);
+                    } : undefined}
+                    onMouseMove={selectionMode ? (e) => {
+                        if (isSelecting) {
+                            handleUpdateSelection(e);
+                        }
+                    } : undefined}
+                    onMouseUp={selectionMode ? (e) => handleEndSelection(e) : undefined}
+                    onMouseOut={selectionMode ? (e) => handleEndSelection(e) : undefined}                />                {/* Fixed positioned container for LaTeX output - positioned relative to the canvas */}
+                <div 
+                  className="absolute top-16 left-0 w-full h-[calc(100vh-4rem)] z-20" 
+                  id="latex-container" 
+                  style={{ 
+                    touchAction: "none", 
+                    overflow: "visible",
+                    position: "absolute",
+                    pointerEvents: "auto"
+                  }}>
+                    {latexExpression && latexExpression.map((item, index) => (
+                        <LatexAnswer
+                            key={`latex-answer-${index}`}
+                            item={item}
+                            index={index}
+                            steps={result?.steps}
+                            formulas={result?.formulas_used}
+                            showDetailedSteps={showDetailedSteps}
+                            onPositionChange={handleLatexPositionChange}                            onDelete={handleLatexDelete}
+                        />
+                    ))}                </div>
             </div>
-
-            {latexExpression && latexExpression.map((latex, index) => (
-                <Draggable
-                    key={index}
-                    defaultPosition={latexPosition}
-                    onStop={(_, data) => setLatexPosition({ x: data.x, y: data.y })}
-                >
-                    <div className="absolute p-3 text-gray-900 bg-white border border-gray-200 rounded-lg shadow-md">
-                        <div className="latex-content math-output" dangerouslySetInnerHTML={{ __html: latex }}></div>
-                        
-                        {result && result.steps && result.steps.length > 0 && showDetailedSteps && (
-                            <StepByStepSolution 
-                                steps={result.steps} 
-                                formulas={result.formulas_used || null} 
-                            />
-                        )}
-                    </div>
-                </Draggable>
-            ))}
-
-            <FormulaReference 
-                mode={mathMode}
-                isVisible={showFormulaReference}
-                onClose={() => setShowFormulaReference(false)}
-            />
         </>
     );
 }

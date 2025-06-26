@@ -5,7 +5,9 @@ import { MantineProvider } from '@mantine/core';
 import Home from '@/screens/home';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
-import '@/index.css';
+// Order matters - index.css first, then draggable-fix.css to override
+import './index.css';  // Use direct import path for clarity
+import './draggable-fix.css'; // Import draggable CSS fixes last to take precedence
 
 // Import MathJax types
 import '@/types/mathjax';
